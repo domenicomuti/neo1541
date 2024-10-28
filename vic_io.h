@@ -23,16 +23,17 @@
 typedef unsigned char vic_byte;
 
 int atn(int value);
-int eoi();
+void wait_atn(int value);
 void wait_clock(int value);
+int wait_data(int value, int timeout);
 void set_clock(int value);
 void set_data(int value);
 int get_data();
-char get_byte();
-void wait_data(int value);
-void wait_atn(int value);
+int eoi();
 void handle_atn();
 void read_bytes();
+void send_bytes();
+char get_byte();
 
 void print_command_name(vic_byte command);
 

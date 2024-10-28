@@ -19,19 +19,11 @@ int atn(int value) {
     return (inb(addr+1) & 0x10) == !value;
 }
 
-int eoi() {
-    //printf("WAIT CLOCK LINE TRUE - CHECK EOI\n");
-    suseconds_t a = get_microsec();
-    int eoi = 0;
-    while (inb(addr+1) & 0x20) {
-        suseconds_t elapsed = get_microsec() - a;
-        if (elapsed > 200) {
-            //printf("EOI\n");
-            eoi = 1;
-            break;
-        }
-    }
-    return eoi;
+void wait_atn(int value) {
+    //printf("WAIT ATN\n");
+    if (value) 
+        value = 0x10;
+    while ((inb(addr+1) & 0x10) == value) {}
 }
 
 void wait_clock(int value) {
@@ -39,6 +31,18 @@ void wait_clock(int value) {
     if (value) 
         value = 0x20;
     while ((inb(addr+1) & 0x20) == value) {}
+}
+
+int wait_data(int value, int timeout) {
+    //printf("WAIT DATA LINE %s\n", value ? "TRUE" : "FALSE");
+    if (value) 
+        value = 0x40;
+    suseconds_t a = get_microsec();
+    while ((inb(addr+1) & 0x40) == value) {
+        if ((timeout > 0) && ((get_microsec() - a) > timeout))
+            return 0;
+    }
+    return 1;
 }
 
 void set_clock(int value) {
@@ -64,58 +68,20 @@ int get_data() {
     return data;
 }
 
-char get_byte() {
-    vic_byte byte = 0;
-
-    //printf("START BYTE TRANSMISSION\n");
-
-    //suseconds_t a = get_microsec();
-
-    // bit 1
-    wait_clock(0);
-    byte = get_data();
-    wait_clock(1);
-
-    // bit 2
-    wait_clock(0);
-    byte |= get_data() << 1;
-    wait_clock(1);
-
-    // bit 3
-    wait_clock(0);
-    byte |= get_data() << 2;
-    wait_clock(1);
-
-    // bit 4
-    wait_clock(0);
-    byte |= get_data() << 3;
-    wait_clock(1);
-
-    // bit 5
-    wait_clock(0);
-    byte |= get_data() << 4;
-    wait_clock(1);
-    
-    // bit 6
-    wait_clock(0);
-    byte |= get_data() << 5;
-    wait_clock(1);
-
-    // bit 7
-    wait_clock(0);
-    byte |= get_data() << 6;
-    wait_clock(1);
-
-    // bit 8
-    wait_clock(0);
-    byte |= get_data() << 7;
-    wait_clock(1);
-
-    //printf("%ld\n", get_microsec() - a);
-    
-    //printf("END BYTE TRANSMISSION\n");
-
-    return byte;
+int eoi() {
+    //printf("WAIT CLOCK LINE TRUE - CHECK EOI\n");
+    suseconds_t a = get_microsec();
+    suseconds_t elapsed;
+    int eoi = 0;
+    while (inb(addr+1) & 0x20) {
+        elapsed = get_microsec() - a;
+        if (elapsed > 200) {
+            //printf("EOI\n");
+            eoi = 1;
+            break;
+        }
+    }
+    return eoi;
 }
 
 void handle_atn() {
@@ -172,7 +138,6 @@ void handle_atn() {
     while (atn(1));
 
     printf("%sATN OFF\n%s", KRED, KNRM);
-
 }
 
 void read_bytes() {
@@ -215,19 +180,132 @@ void read_bytes() {
     printf("%sGET DATA OFF\n%s", KGRN, KNRM);
 }
 
-void wait_data(int value) {
-    //printf("WAIT DATA LINE %s\n", value ? "TRUE" : "FALSE");
-    suseconds_t a = get_microsec();
-    if (value) 
-        value = 0x40;
-    while ((inb(addr+1) & 0x40) == value) {}
+void send_bytes() {
+    printf("TURNAROUND\n");
+
+    set_data(0);
+    set_clock(1);
+
+    FILE* fptr = fopen("/home/noelyoung/Synthesong.prg", "rb");
+    vic_byte c;
+
+    fseek(fptr, 0, SEEK_END);
+    int file_size = ftell(fptr);
+    fseek(fptr, 0, SEEK_SET);
+    int i_file = 0;
+    int retry = 0;
+
+    do {
+        if (retry == 20) {
+            set_clock(0);
+            set_data(0);
+            device_attentioned = device_listening = device_talking = 0;
+            break;
+        }
+
+        microsleep(100);
+        set_clock(0); // DEVICE IS READY TO SEND
+        wait_data(0, 0); // COMPUTER IS READY FOR DATA
+
+        int eoi = 0;
+        
+        c = getc(fptr);
+        //printf("%X - %c - 0x%X\n", i_file, c, c);
+        i_file++;
+
+        if (i_file == file_size) {
+            eoi = 1;
+            wait_data(1, 0);
+            wait_data(0, 0);
+            microsleep(30);
+        }
+
+        for (int i=0; i<8; i++) {
+            suseconds_t a = get_microsec();
+            set_clock(1);
+            set_data((~c >> i) & 1);
+            while ((get_microsec() - a) < 60) {}
+
+            a = get_microsec();
+            set_clock(0);
+            while ((get_microsec() - a) < 60) {}
+        }
+
+        set_clock(1);
+        set_data(0);
+
+        if (!wait_data(1, 1000)) {
+            retry++;
+            //printf("%sTIMEOUT, RETRY%s\n", KRED, KNRM);
+            i_file--;
+            printf("%X - %c - 0x%X - %d\n", i_file, c, c, retry);
+            fseek(fptr, i_file, SEEK_SET);
+            continue;
+        }
+        retry = 0;
+
+        if (eoi) break;
+    }
+    while (1);
+
+    set_clock(0);
+    set_data(0);
+
+    fclose(fptr);
 }
 
-void wait_atn(int value) {
-    printf("WAIT ATN\n");
-    if (value) 
-        value = 0x10;
-    while ((inb(addr+1) & 0x10) == value) {}
+char get_byte() {
+    vic_byte byte = 0;
+
+    //printf("START BYTE TRANSMISSION\n");
+
+    //suseconds_t a = get_microsec();
+
+    // bit 1
+    wait_clock(0);
+    byte = get_data();
+    wait_clock(1);
+
+    // bit 2
+    wait_clock(0);
+    byte |= get_data() << 1;
+    wait_clock(1);
+
+    // bit 3
+    wait_clock(0);
+    byte |= get_data() << 2;
+    wait_clock(1);
+
+    // bit 4
+    wait_clock(0);
+    byte |= get_data() << 3;
+    wait_clock(1);
+
+    // bit 5
+    wait_clock(0);
+    byte |= get_data() << 4;
+    wait_clock(1);
+    
+    // bit 6
+    wait_clock(0);
+    byte |= get_data() << 5;
+    wait_clock(1);
+
+    // bit 7
+    wait_clock(0);
+    byte |= get_data() << 6;
+    wait_clock(1);
+
+    // bit 8
+    wait_clock(0);
+    byte |= get_data() << 7;
+    wait_clock(1);
+
+    //printf("%ld\n", get_microsec() - a);
+    
+    //printf("END BYTE TRANSMISSION\n");
+
+    return byte;
 }
 
 void print_command_name(vic_byte command) {
@@ -254,5 +332,9 @@ void print_command_name(vic_byte command) {
             printf("OPEN ");
             break;
     }
-    printf("%X\n", command & 0x0F);
+
+    vic_byte secondary = command & 0x0F;
+    if (secondary != 0x0F) printf("%X", secondary);
+    printf("\n");
+
 }
