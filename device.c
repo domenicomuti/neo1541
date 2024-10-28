@@ -1,10 +1,10 @@
-#include "ieee488.h"
+#include "device.h"
 
 extern int addr;
 
 vic_byte last_command;
 
-int reset = 1;
+int device_resetted = 1;
 int device_attentioned = 0;
 int device_listening = 0;
 int device_talking = 0;
@@ -15,6 +15,10 @@ int i_data_buffer = 0;
 
 vic_byte filename[100];
 int i_filename = 0;
+
+void reset_device() {
+    device_resetted = device_attentioned = device_listening = device_talking = 0;
+}
 
 char get_byte() {
     vic_byte byte = 0;
@@ -71,7 +75,7 @@ char get_byte() {
 }
 
 void handle_atn() {
-    printf("%sATN ON\n%s", KRED, KNRM);
+    printf("%sATN ON\n%s", COLOR_CYAN, COLOR_RESET);
             
     set_data(1);
     wait_clock(1);
@@ -112,7 +116,6 @@ void handle_atn() {
             //
         }
         else {
-            printf("NO COMMAND RECEIVED %d\n", reset);
             device_attentioned = device_listening = device_talking = 0;
         }
 
@@ -131,13 +134,13 @@ void handle_atn() {
             device_attentioned = 0;
         }
     }
-    while (atn(1) && !reset);
+    while (atn(1) && !device_resetted);
 
-    printf("%sATN OFF\n%s", KRED, KNRM);
+    printf("%sATN OFF\n%s", COLOR_CYAN, COLOR_RESET);
 }
 
 void read_bytes() {
-    printf("%sGET DATA ON\n%s", KGRN, KNRM);
+    printf("%sGET DATA ON\n%s", COLOR_MAGENTA, COLOR_RESET);
 
     do {
         wait_clock(0); // TALKER IS READY TO SEND
@@ -153,7 +156,7 @@ void read_bytes() {
 
         wait_clock(1);
         data_buffer[i_data_buffer] = get_byte();
-        printf("%s%c - 0x%X\n%s", KYEL, data_buffer[i_data_buffer], data_buffer[i_data_buffer], KNRM);
+        printf("%s%c - 0x%X\n%s", COLOR_YELLOW, data_buffer[i_data_buffer], data_buffer[i_data_buffer], COLOR_RESET);
 
         i_data_buffer++;
 
@@ -173,11 +176,13 @@ void read_bytes() {
         i_data_buffer = 0;
     }
 
-    printf("%sGET DATA OFF\n%s", KGRN, KNRM);
+    device_listening = 0;
+
+    printf("%sGET DATA OFF\n%s", COLOR_MAGENTA, COLOR_RESET);
 }
 
 void send_bytes() {
-    printf("TURNAROUND\n");
+    printf("SENDING DATA\n");
 
     set_data(0);
     set_clock(1);
@@ -191,17 +196,18 @@ void send_bytes() {
     int i_file = 0;
     int retry = 0;
 
+    create_progress_bar();
+
     microsleep(80);
 
     do {
-        if (resetted()) {
-            printf("--- RESET ---\n");
-            reset = 1;
+        if (resetted() || retry > 99) {
+            device_resetted = 1;
             return;
         }
         if (atn(1)) {
             set_clock(0);
-            printf("--- ERROR ---\n");
+            printf("%sMACHINE ERROR%s\n", COLOR_RED, COLOR_RESET);
             return;
         }
         
@@ -213,6 +219,8 @@ void send_bytes() {
         c = getc(fptr);
         //printf("%X - %c - 0x%X\n", i_file, c, c);
         i_file++;
+
+        set_progress_bar(i_file * 100 / file_size);
 
         if (i_file == file_size) {
             eoi = 1;
@@ -241,9 +249,8 @@ void send_bytes() {
 
         if (!wait_data(1, 1000)) {
             retry++;
-            //printf("%sTIMEOUT, RETRY%s\n", KRED, KNRM);
             i_file--;
-            printf("%X - %c - 0x%X - %d\n", i_file, c, c, retry);
+            //printf("%X - %c - 0x%X - %d\n", i_file, c, c, retry);
             fseek(fptr, i_file, SEEK_SET);
             microsleep(100);
             continue;
@@ -260,6 +267,8 @@ void send_bytes() {
     set_data(0);
 
     fclose(fptr);
+
+    device_talking = 0;
 }
 
 void print_command_name(vic_byte command) {
@@ -286,7 +295,7 @@ void print_command_name(vic_byte command) {
             printf("OPEN ");
             break;
         default:
-            printf("%X\n", command);
+            printf("UNKNOWN COMMAND: %X\n", command);
             return;
     }
 

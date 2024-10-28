@@ -1,14 +1,24 @@
 #include "vic_io.h"
 
-extern int reset;
+extern int device_resetted;
 
 int addr = 0xd100;
 
+int _resetted_message_displayed = 0;
 int resetted() {
-    return (inb(addr+1) & 0x80) == 0x80;
+    int _resetted = (inb(addr+1) & 0x80) == 0x80;
+    if (_resetted && !_resetted_message_displayed) {
+        _resetted_message_displayed = 1;
+        printf("%sMACHINE RESET%s\n", COLOR_RED, COLOR_RESET);
+    }
+    return _resetted;
 }
 
 int atn(int value) {
+    if (resetted()) {
+        device_resetted = 1;
+        return 0;
+    }
     return (inb(addr+1) & 0x10) == !value;
 }
 
@@ -18,7 +28,7 @@ void wait_atn(int value) {
         value = 0x10;
     while ((inb(addr+1) & 0x10) == value) {
         if (resetted()) {
-            reset = 1;
+            device_resetted = 1;
             break;
         }
     }
@@ -30,7 +40,7 @@ void wait_clock(int value) {
         value = 0x20;
     while ((inb(addr+1) & 0x20) == value) {
         if (resetted()) {
-            reset = 1;
+            device_resetted = 1;
             break;
         }
     }

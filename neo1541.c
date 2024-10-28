@@ -3,15 +3,19 @@
 #include <unistd.h>
 #include <sched.h>
 
+#include <string.h>
+
 #include "timing.h"
 #include "display.h"
 #include "vic_io.h"
-#include "ieee488.h"
+#include "device.h"
 
-extern int reset;
+extern int device_resetted;
 extern int device_attentioned;
 extern int device_listening;
 extern int device_talking;
+
+extern int _resetted_message_displayed;
 
 extern int addr;
 
@@ -42,31 +46,25 @@ int main() {
         while (resetted()) {
             microsleep(1000);
         }
-        reset = 0;
-        printf("RESET OK\n");
+        device_resetted = _resetted_message_displayed = 0;
+        printf("%sDEVICE RESET OK%s\n", COLOR_GREEN, COLOR_RESET);
         
-        wait_clock(0);
-        printf("WAIT\n");
+        wait_atn(0);
+        printf("WAITING ATN\n");
 
         while (1) {
-            if (!device_attentioned) {
+            if (!device_attentioned)
                 microsleep(900);
-            }
-
-            if (atn(1)) {
+                
+            if (atn(1))
                 handle_atn();
-            }
-            else if (device_listening) {
+            else if (device_listening)
                 read_bytes();
-                device_listening = 0;
-            }
-            else if (device_talking) {
+            else if (device_talking)
                 send_bytes();
-                device_talking = 0;
-            }
 
-            if (reset) {
-                reset = device_attentioned = device_listening = device_talking = 0;
+            if (device_resetted) {
+                reset_device();
                 break;
             }
         }

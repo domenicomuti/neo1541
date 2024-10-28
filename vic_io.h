@@ -7,19 +7,6 @@
 #include "timing.h"
 #include "display.h"
 
-#define DEVICE       8
-
-#define LISTEN       0x20
-#define UNLISTEN     0x30   // 0x3F
-#define TALK         0x40
-#define UNTALK       0x50   // 0x5F
-#define OPEN_CHANNEL 0x60
-#define CLOSE        0xE0
-#define OPEN         0xF0
-
-#define MODE_READ    0
-#define MODE_WRITE   1
-
 typedef unsigned char vic_byte;
 
 int resetted();
