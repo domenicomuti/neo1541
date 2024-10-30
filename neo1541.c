@@ -3,12 +3,12 @@
 #include <unistd.h>
 #include <sched.h>
 
-#include <string.h>
-
 #include "timing.h"
 #include "display.h"
 #include "vic_io.h"
 #include "device.h"
+
+#include "cc1541.h"
 
 extern int device_resetted;
 extern int device_attentioned;
@@ -19,7 +19,7 @@ extern int _resetted_message_displayed;
 
 extern int addr;
 
-int main() {
+int main(int argc, char* argv[]) {
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
             printf("NO ROOT\n");
