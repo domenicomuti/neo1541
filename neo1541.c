@@ -24,19 +24,18 @@ extern int addr;
 char* image;
 
 int main(int argc, char* argv[]) {
-
     for (int i=1; i<argc-1; i++) {
         if (strcmp(argv[i], "--image") == 0) {
             image = argv[i+1];
         }
     }
 
-    struct vic_disk_info disk_info;
+    /*struct vic_disk_info disk_info;
     get_disk_info("/home/noelyoung/omega.d64", &disk_info);
 
     printf("OK\n");
 
-    return 0;
+    return 0;*/
 
 
 

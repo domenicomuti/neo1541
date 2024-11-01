@@ -96,10 +96,10 @@
 #define MAXNUMEXTRACTIONS 32
 
 typedef struct vic_disk_dir {
-    char blocks[5];
+    int blocks;
     unsigned char filename[FILENAMEMAXSIZE];
     int filename_length;
-    char type[5];
+    unsigned char type[5];
 } vic_disk_dir;
 
 typedef struct vic_disk_info {

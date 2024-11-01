@@ -170,6 +170,10 @@ void read_bytes() {
     }
     while (1);
 
+    /*FILE *fptr = fopen("/home/noelyoung/list.prg", "a");
+    fwrite(data_buffer, i_data_buffer, 1, fptr);
+    fclose(fptr);*/
+
     if ((last_command & 0xF0) == OPEN) {
         for (int i=0; i<i_data_buffer; i++) {
             filename[i] = data_buffer[i];
@@ -225,7 +229,6 @@ void send_bytes() {
         
         c = getc(fptr);
         //c = prg_buffer[i_file];
-        //printf("%X - %c - 0x%X\n", i_file, c, c);
         i_file++;
 
         set_progress_bar(i_file * 100 / file_size);
@@ -258,7 +261,6 @@ void send_bytes() {
         if (!wait_data(1, 1000)) {
             retry++;
             i_file--;
-            //printf("%X - %c - 0x%X - %d\n", i_file, c, c, retry);
             fseek(fptr, i_file, SEEK_SET);
             microsleep(100);
             continue;

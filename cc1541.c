@@ -141,14 +141,14 @@ typedef enum {
     IMAGE_D81
 } image_type;
 
-static const char *filetypename_uc[] = {
-    "DEL", "SEQ", "PRG", "USR", "REL", "CBM", "???", "???",
-    "???", "???", "???", "???", "???", "???", "???", "???"
+static const unsigned char *filetypename_uc[] = {
+    (unsigned char*)"DEL", (unsigned char*)"SEQ", (unsigned char*)"PRG", (unsigned char*)"USR", (unsigned char*)"REL", (unsigned char*)"CBM", (unsigned char*)"???", (unsigned char*)"???",
+    (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???"
 };
 
-static const char *filetypename_lc[] = {
-    "del", "seq", "prg", "usr", "rel", "cbm", "???", "???",
-    "???", "???", "???", "???", "???", "???", "???", "???"
+static const unsigned char *filetypename_lc[] = {
+    (unsigned char*)"del", (unsigned char*)"seq", (unsigned char*)"prg", (unsigned char*)"usr", (unsigned char*)"rel", (unsigned char*)"cbm", (unsigned char*)"???", (unsigned char*)"???",
+    (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???", (unsigned char*)"???"
 };
 
 static const char *error_name[] = {
@@ -1929,22 +1929,22 @@ check_bam(image_type type, const unsigned char* image)
 
 /* Prints the filetype like the C64 when listing the directory */
 static void
-print_filetype(int filetype, char* string_filetype)
+print_filetype(int filetype, unsigned char* string_filetype)
 {
     if ((filetype & 0x80) == 0) {
-        strcat(string_filetype, "*");
+        memcpy(string_filetype, "*", 1);
     } else {
-        strcat(string_filetype, " ");
+        memcpy(string_filetype, " ", 1);
     }
     if(unicode == 1) {
-        strcat(string_filetype, filetypename_uc[filetype & 0xf]);
+        memcpy(string_filetype + 1, filetypename_uc[filetype & 0xf], 3);
     } else {
-        strcat(string_filetype, filetypename_lc[filetype & 0xf]);
+        memcpy(string_filetype + 1, filetypename_lc[filetype & 0xf], 3);
     }
     if ((filetype & 0x40) != 0) {
-        strcat(string_filetype, "<");
+        memcpy(string_filetype + 4, "<", 1);
     } else {
-        strcat(string_filetype, " ");
+        memcpy(string_filetype + 4, " ", 1);
     }
 }
 
@@ -1979,9 +1979,10 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
 
         if (filetype != FILETYPEDEL) {
             unsigned char* filename = (unsigned char*)image + dirblock + FILENAMEOFFSET;
-            char _blocks[10];
-            sprintf(_blocks, "%-3d  ", blocks);
-            strcpy(disk_info->dir[i_dir].blocks, _blocks);
+            //char _blocks[10];
+            //sprintf(_blocks, "%-3d  ", blocks);
+            //strcpy(disk_info->dir[i_dir].blocks, _blocks);
+            disk_info->dir[i_dir].blocks = blocks;
             disk_info->dir[i_dir].filename_length = get_dirfilename_n(filename);
             memcpy(
                 &disk_info->dir[i_dir].filename,
@@ -4497,7 +4498,7 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
                     filetype &= 7;
                     if(filetype <= 5) {
                         afilename[pext] = '.';
-                        strcpy(afilename + pext + 1, filetypename_lc[filetype]);
+                        strcpy(afilename + pext + 1, (char*)filetypename_lc[filetype]);
                     }
                     unsigned int track = *(image + dirblock + FILETRACKOFFSET);
                     int sector = *(image + dirblock + FILESECTOROFFSET);
