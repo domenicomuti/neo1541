@@ -9,7 +9,7 @@ int resetted() {
     int _resetted = (inb(addr+1) & 0x80) == 0x80;
     if (_resetted && !_resetted_message_displayed) {
         _resetted_message_displayed = 1;
-        printf("%sMACHINE RESET%s\n", COLOR_RED, COLOR_RESET);
+        printf("%sMACHINE HALTED%s\n", COLOR_RED, COLOR_RESET);
     }
     return _resetted;
 }

@@ -36,6 +36,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <wchar.h>
+#include "cc1541.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -50,100 +51,6 @@
 #else
 #define FILESEPARATOR '/'
 #endif
-
-#define DIRENTRIESPERBLOCK     8
-#define DIRTRACK_D41_D71       18
-#define DIRTRACK_D81           40
-#define SECTORSPERTRACK_D81    40
-#define MAXNUMFILES_D81        ((SECTORSPERTRACK_D81 - 3) * DIRENTRIESPERBLOCK)
-#define DIRENTRYSIZE           32
-#define BLOCKSIZE              256
-#define BLOCKOVERHEAD          2
-#define TRACKLINKOFFSET        0
-#define SECTORLINKOFFSET       1
-#define FILETYPEOFFSET         2
-#define FILETYPEDEL            0
-#define FILETYPESEQ            1
-#define FILETYPEPRG            2
-#define FILETYPEUSR            3
-#define FILETYPEREL            4
-#define FILETYPETRANSWARPMASK  0x100
-#define FILETRACKOFFSET        3
-#define FILESECTOROFFSET       4
-#define FILENAMEOFFSET         5
-#define FILENAMEMAXSIZE        16
-#define FILENAMEEMPTYCHAR      (' ' | 0x80)
-#define BAMMESSAGEOFFSET       0xab
-#define BAMMESSAGEMAXSIZE      0x100-BAMMESSAGEOFFSET
-#define TRANSWARPSIGNATROFFSLO 21
-#define TRANSWARPSIGNATURELO   'T'
-#define TRANSWARPSIGNATROFFSHI 22
-#define TRANSWARPSIGNATUREHI   'W'
-#define DIRDATACHECKSUMOFFSET  23
-#define TRANSWARPTRACKOFFSET   24
-#define FILECHECKSUMOFFSET     25
-#define LOADADDRESSLOOFFSET    26
-#define LOADADDRESSHIOFFSET    27
-#define ENDADDRESSLOOFFSET     28
-#define ENDADDRESSHIOFFSET     29
-#define FILEBLOCKSLOOFFSET     30
-#define FILEBLOCKSHIOFFSET     31
-#define D64NUMBLOCKS           (664 + 19)
-#define D64SIZE                (D64NUMBLOCKS * BLOCKSIZE)
-#define D64SIZE_EXTENDED       (D64SIZE + 5 * 17 * BLOCKSIZE)
-#define D71SIZE                (D64SIZE * 2)
-#define D81SIZE                (D81NUMTRACKS * SECTORSPERTRACK_D81 * BLOCKSIZE)
-#define D64NUMTRACKS           35
-#define D64NUMTRACKS_EXTENDED  (D64NUMTRACKS + 5)
-#define D71NUMTRACKS           (D64NUMTRACKS * 2)
-#define D81NUMTRACKS           80
-#define BAM_OFFSET_SPEED_DOS   0xc0
-#define BAM_OFFSET_DOLPHIN_DOS 0xac
-#define DIRSLOTEXISTS          0
-#define DIRSLOTFOUND           1
-#define DIRSLOTNOTFOUND        2
-/* for sector chain analysis */
-#define UNALLOCATED            0 /* unused as of now */
-#define ALLOCATED              1 /* part of a valid sector chain */
-#define FILESTART              2 /* analysed to be the start of a sector chain */
-#define FILESTART_TRUNCATED    3 /* analysed to be the start of a sector chain, was truncated */
-#define POTENTIALLYALLOCATED   4 /* currently being analysed */
-/* error codes for sector chain validation */
-#define VALID                  0 /* valid chain */
-#define ILLEGAL_TRACK          1 /* ends with illegal track pointer */
-#define ILLEGAL_SECTOR         2 /* ends with illegal sector pointer */
-#define LOOP                   3 /* loop in current chain */
-#define COLLISION              4 /* collision with other file */
-#define CHAINED                5 /* ends at another file start */
-#define CHAINED_TRUNCATED      6 /* ends at start of a truncated file */
-#define FIRST_BROKEN           7 /* issue already in first sector */
-/* undelete levels */
-#define RESTORE_DIR_ONLY        0 /* Only restore all dir entries without touching any t/s links */
-#define RESTORE_VALID_FILES     1 /* Fix dir entries for files with valid t/s chains */
-#define RESTORE_VALID_CHAINS    2 /* Also add wild sector chains with valid t/s chains */
-#define RESTORE_INVALID_FILES   3 /* Also fix dir entries with invalid t/s chains */
-#define RESTORE_INVALID_CHAINS  4 /* Also add and fix wild invalid t/s chains */
-#define RESTORE_INVALID_SINGLES 5 /* Also include single block files */
-/* error codes for directory */
-#define DIR_OK                 0
-#define DIR_ILLEGAL_TS         1
-#define DIR_CYCLIC_TS          2
-
-#define TRANSWARP                "TRANSWARP"
-#define TRANSWARPBASEBLOCKSIZE   0xc0
-#define TRANSWARPBUFFERBLOCKSIZE 0x1f
-#define TRANSWARPBLOCKSIZE       (TRANSWARPBASEBLOCKSIZE + TRANSWARPBUFFERBLOCKSIZE)
-#define TRANSWARPKEYSIZE         29 /* 232 bits */
-#define TRANSWARPKEYHASHROUNDS   33
-
-/* maximum number of files for transwarp order permutation */
-#define MAXPERMUTEDFILES 11
-/* maximum number of free sectors on an extended D64 */
-#define MAXFREESECTORS 768
-/* maximum number of patches */
-#define MAXNUMPATCHES 32
-/* maximum number of patterns for file extraction */
-#define MAXNUMEXTRACTIONS 32
 
 /* Table for conversion of uppercase PETSCII to Unicode */
 static unsigned int p2u_uppercase_tab[256] = {
@@ -278,7 +185,7 @@ sectors_per_track_extended[] = {
     /* 76-80 */ 17,17,17,17,17
 };
 
-static int quiet           = 0;      /* global quiet flag */
+static int quiet           = 1;      /* global quiet flag */
 static int verbose         = 0;      /* global verbose flag */
 static int num_files       = 0;      /* number of files to be written provided by the user */
 static int max_hash_length = 16;     /* number of bytes of the filenames to calculate the hash over */
@@ -611,14 +518,6 @@ ascii2petscii(const unsigned char* ascii, unsigned char* petscii, int len)
     }
 }
 
-/* Prints a PETSCII filename as ASCII with escapes */
-static void
-print_filename_with_escapes(const unsigned char* petscii, int len)
-{
-    char ascii[3 * FILENAMEMAXSIZE + 1];
-    fputs(petscii2ascii(petscii, ascii, len, true), stdout);
-}
-
 /* Determines length of 0xa0 terminated PETSCII string */
 static int
 pstrlen(const unsigned char* string)
@@ -817,39 +716,18 @@ putp(unsigned char petscii, FILE *file)
     }
 }
 
-/* Prints a PETSCII string */
-static void
-print_petscii(unsigned char *petscii, int len)
+static int
+get_dirfilename_n(unsigned char* pfilename)
 {
-    for(int i = 0; i < len; i++) {
-        putp(petscii[i], stdout);
-    }
-}
-
-/* Prints the given PETSCII filename like the C64 when listing the directory */
-static void
-print_dirfilename(unsigned char* pfilename)
-{
-    int ended = 0;
-    putc('\"', stdout);
+    int n = 0;
     for (int pos = 0; pos < FILENAMEMAXSIZE; pos++) {
         unsigned char c = pfilename[pos];
         if (c == FILENAMEEMPTYCHAR) {
-            if (!ended) {
-                putc('\"', stdout);
-                ended = 1;
-            } else {
-                putc(' ', stdout);
-            }
-        } else {
-            putp(c, stdout);
+            break;
         }
+        n++;
     }
-    if (!ended) {
-        putc('\"', stdout);
-    } else {
-        putc(' ', stdout);
-    }
+    return n;
 }
 
 /* Prints the given PETSCII filename */
@@ -1433,7 +1311,6 @@ check_hashes(image_type type, const unsigned char* image)
         fprintf(stderr, "ERROR: Memory allocation error\n");
         exit(-1);
     }
-    printf("\n");
 
     int ds = (type == IMAGE_D81) ? 3 : 1;
     int dt = dirtrack(type);
@@ -1602,11 +1479,6 @@ create_dir_entries(image_type type, unsigned char* image, imagefile* files, int 
     for (int i = 0; i < num_files; i++) {
         /* find or create slot */
         imagefile *file = files + i;
-
-        if (verbose) {
-            printf("  ");
-            print_dirfilename(file->pfilename);
-        }
 
         if(file->force_new) {
             new_dir_slot(type, image, dir_sector_interleave, shadowdirtrack, &file->direntryindex, &file->direntrysector, &file->direntryoffset, files);
@@ -1965,86 +1837,6 @@ assign_blocktags(image_type type, const unsigned char *image, int(*blocktags)[SE
     free(blockmap);
 }
 
-/* Returns true if the file starting on the given filetrack and filesector uses the given track */
-static bool
-fileontrack(image_type type, const unsigned char *image, int track, int filetrack, int filesector)
-{
-    while (filetrack != 0) {
-        if (filetrack == track) {
-            return true;
-        }
-
-        int b = linear_sector(type, filetrack, filesector);
-        if(b < 0) {
-            return false;
-        }
-        int block_offset = b * BLOCKSIZE;
-        int next_track = image[block_offset + TRACKLINKOFFSET];
-        int next_sector = image[block_offset + SECTORLINKOFFSET];
-        filetrack = next_track;
-        filesector = next_sector;
-    }
-
-    return false;
-}
-
-/* Prints all filenames of files that use the given track */
-static void
-print_track_usage(image_type type, const unsigned char *image, int(*blocktags)[SECTORSPERTRACK_D81], int track)
-{
-
-    char *blockmap = calloc(image_num_blocks(type), sizeof(char));
-    if(blockmap == NULL) {
-        fprintf(stderr, "ERROR: Memory allocation error\n");
-        exit(-1);
-    }
-    int ds = (type == IMAGE_D81) ? 3 : 1;
-    int dt = dirtrack(type);
-    int offset = 0;
-    do {
-        int dirblock = linear_sector(type, dt, ds) * BLOCKSIZE + offset;
-        int filetype = image[dirblock + FILETYPEOFFSET] & 0xf;
-        if (filetype != 0) {
-            int filetrack = image[dirblock + FILETRACKOFFSET];
-            int filesector = image[dirblock + FILESECTOROFFSET];
-            bool ontrack = (type == IMAGE_D71) ? fileontrack(type, image, track, (filetrack > D64NUMTRACKS) ? filetrack - D64NUMTRACKS : filetrack + D64NUMTRACKS, filesector) : false;
-
-            if (is_transwarp_file(image, dirblock)) {
-                int start_track;
-                int end_track;
-                int low_track;
-                int high_track;
-                int filesize = transwarp_stat(type, image, dirblock, &start_track, &end_track, &low_track, &high_track);
-                if (filesize <= 0) {
-                    continue;
-                }
-
-                ontrack = (low_track <= track) && (track <= high_track);
-                if (ontrack == false) {
-                    continue;
-                }
-
-                filetrack = start_track;
-            }
-
-            if (ontrack || fileontrack(type, image, track, filetrack, filesector)) {
-                unsigned char *filename = (unsigned char *) image + dirblock + FILENAMEOFFSET;
-                if (track == filetrack) {
-                    reverse_print_on();
-                }
-                printf("%c", blocktags[filetrack][filesector]);
-                if (track == filetrack) {
-                    reverse_print_off();
-                }
-                printf(": ");
-                print_filename(stdout, filename);
-                printf(" ");
-            }
-        }
-    } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
-    free(blockmap);
-}
-
 /* Prints the BAM allocation map and returns the number of free blocks */
 static int
 check_bam(image_type type, const unsigned char* image)
@@ -2082,19 +1874,6 @@ check_bam(image_type type, const unsigned char* image)
                     sectorsFreeOnDirTrack++;
                 }
             } else {
-                if (verbose) {
-                    int blocktag = blocktags[t][s];
-                    if (blocktag == 0) {
-                        blocktag = '#';
-                    }
-                    if (blocktag >= 256) {
-                        reverse_print_on();
-                    }
-                    printf("%c", blocktag);
-                    if (blocktag >= 256) {
-                        reverse_print_off();
-                    }
-                }
                 if (t != dirtrack(type)) {
                     sectorsOccupied++;
                 } else {
@@ -2139,10 +1918,6 @@ check_bam(image_type type, const unsigned char* image)
                 printf(" ");
             }
         }
-        if (verbose) {
-            print_track_usage(type, image, blocktags, t);
-            printf("\n");
-        }
     }
     if (verbose) {
         printf("%3d/%3d blocks free (%d/%d including dir track)\n", sectorsFree, sectorsFree + sectorsOccupied,
@@ -2154,28 +1929,27 @@ check_bam(image_type type, const unsigned char* image)
 
 /* Prints the filetype like the C64 when listing the directory */
 static void
-print_filetype(int filetype)
+print_filetype(int filetype, char* string_filetype)
 {
     if ((filetype & 0x80) == 0) {
-        printf("*");
+        strcat(string_filetype, "*");
     } else {
-        printf(" ");
+        strcat(string_filetype, " ");
     }
     if(unicode == 1) {
-        printf("%s", filetypename_uc[filetype & 0xf]);
+        strcat(string_filetype, filetypename_uc[filetype & 0xf]);
     } else {
-        printf("%s", filetypename_lc[filetype & 0xf]);
+        strcat(string_filetype, filetypename_lc[filetype & 0xf]);
     }
     if ((filetype & 0x40) != 0) {
-        printf("<");
+        strcat(string_filetype, "<");
     } else {
-        printf(" ");
+        strcat(string_filetype, " ");
     }
 }
 
-/* Prints the directory like the C64 when listing the directory */
 static void
-print_directory(image_type type, unsigned char* image, int blocks_free)
+print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk_info* disk_info)
 {
     unsigned char* bam = image + linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
     char *blockmap = calloc(image_num_blocks(type), sizeof(char));
@@ -2184,22 +1958,20 @@ print_directory(image_type type, unsigned char* image, int blocks_free)
         exit(-1);
     }
 
-    printf("\n0 ");
-    reverse_print_on();
-    printf("\"");
-    print_petscii(bam + get_header_offset(type), 16);
-    printf("\" ");
-    print_petscii(bam + get_id_offset(type), 5);
-    reverse_print_off();
+    //printf("\n0 ");
+    //reverse_print_on();
+    //printf("\"");
+    memcpy(disk_info->header, bam + get_header_offset(type), 16);
+    //printf("\" ");
+    memcpy(disk_info->id, bam + get_id_offset(type), 5);
+    //reverse_print_off();
 
-    if (verbose) {
-        printf("   fn hash  ASCII");
-    }
-    printf("\n");
+    //printf("\n");
 
     int ds = (type == IMAGE_D81) ? 3 : 1;
     int dt = dirtrack(type);
     int offset = 0;
+    int i_dir = 0;
     do {
         int dirblock = linear_sector(type, dt, ds) * BLOCKSIZE + offset;
         int filetype = image[dirblock + FILETYPEOFFSET];
@@ -2207,35 +1979,43 @@ print_directory(image_type type, unsigned char* image, int blocks_free)
 
         if (filetype != FILETYPEDEL) {
             unsigned char* filename = (unsigned char*)image + dirblock + FILENAMEOFFSET;
-            printf("%-3d  ", blocks);
-            print_dirfilename(filename);
-            print_filetype(filetype);
-            if (verbose) {
-                printf(" [$%04x]  \"", filenamehash(filename));
-                print_filename_with_escapes(filename, FILENAMEMAXSIZE);
-                printf("\"");
-            }
-            printf("\n");
+            char _blocks[10];
+            sprintf(_blocks, "%-3d  ", blocks);
+            strcpy(disk_info->dir[i_dir].blocks, _blocks);
+            disk_info->dir[i_dir].filename_length = get_dirfilename_n(filename);
+            memcpy(
+                &disk_info->dir[i_dir].filename,
+                filename,
+                disk_info->dir[i_dir].filename_length
+            );
+            print_filetype(filetype, disk_info->dir[i_dir].type);
+            i_dir++;
+            //printf("\n");
         }
     } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
+    disk_info->n_dir = i_dir;
     free(blockmap);
-    if(unicode == 1) {
-        printf("%d BLOCKS FREE.\n", blocks_free);
+    /*if(unicode == 1) {
+        char* _s_temp;
+        sprintf(_s_temp, "%d BLOCKS FREE.\n", blocks_free);
+        strcat(string_buffer, _s_temp);
     } else {
-        printf("%d blocks free.\n", blocks_free);
-    }
+        char* _s_temp;
+        sprintf(_s_temp, "%d blocks free.\n", blocks_free);
+        strcat(string_buffer, _s_temp);
+    }*/
 
     /* detect and print bam message */
     if((type == IMAGE_D64 || type == IMAGE_D64_EXTENDED_SPEED_DOS) && bam[BAMMESSAGEOFFSET] != 0) {
-        printf("\nBAM message: \"");
+        //printf("\nBAM message: \"");
         /* only checking the first byte and hoping for the best... */
-        int b = BAMMESSAGEOFFSET;
+        /*int b = BAMMESSAGEOFFSET;
         unsigned char c;
         while(b < 256 && ((c = bam[b]) != 0)) {
             putp(c, stdout);
             b++;
         }
-        printf("\"\n");
+        printf("\"\n");*/
     }
 }
 
@@ -4510,46 +4290,6 @@ restore(image_type type, unsigned char* image, int level, imagefile files[])
     }
 }
 
-/* Prints a command line to create dir art like the given image */
-static void
-convert_to_commandline(image_type type, unsigned char* image)
-{
-    char *blockmap = calloc(image_num_blocks(type), sizeof(char));
-    if(blockmap == NULL) {
-        fprintf(stderr, "ERROR: Memory allocation error\n");
-        exit(-1);
-    }
-    printf("\nCommandline to create directory art: -n \"");
-    unsigned int bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
-    print_filename_with_escapes(image + bam + get_header_offset(type), FILENAMEMAXSIZE);
-    printf("\" -i \"");
-    print_filename_with_escapes(image + bam + get_id_offset(type), 5);
-    printf("\" ");
-
-    int ds = (type == IMAGE_D81) ? 3 : 1;
-    int dt = dirtrack(type);
-    int offset = 0;
-    do {
-        int dirblock = linear_sector(type, dt, ds) * BLOCKSIZE + offset;
-        int filetype = image[dirblock + FILETYPEOFFSET];
-        if (filetype) {
-            if(filetype != 0x82) {
-                printf("-T %d ", filetype);
-            }
-            int size = image[dirblock + FILEBLOCKSLOOFFSET] + 256 * image[dirblock + FILEBLOCKSHIOFFSET];
-            if(size != 0) {
-                printf("-B %d ", size);
-            }
-            unsigned char *filename = (unsigned char *) image + dirblock + FILENAMEOFFSET;
-            printf("-N -f \"");
-            print_filename_with_escapes(filename, FILENAMEMAXSIZE);
-            printf("\" -L ");
-        }
-    } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
-    free(blockmap);
-    printf("\n\n");
-}
-
 /* Performs strict CBM DOS validation on the image */
 static void
 validate(image_type type, unsigned char* image)
@@ -4728,7 +4468,7 @@ apply_patches(image_type type, unsigned char* image, patch patches[], int num_pa
 
 /* Extract files according to patterns */
 static void
-extract_files(image_type type, unsigned char* image, char *patterns[], int num_patterns)
+extract_files(image_type type, unsigned char* image, char *patterns[], int num_patterns, unsigned char* out_buffer, int* out_buffer_i)
 {
     bool found = false;
     char *blockmap = calloc(image_num_blocks(type), sizeof(char));
@@ -4764,41 +4504,39 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
                     unsigned int last_track;
                     int last_sector;
                     int result = validate_sector_chain(type, image, blockmap, track, sector, &last_track, &last_sector);
-                    printf("\nExtracting %s", afilename);
+                    if (!quiet) {
+                        printf("\nExtracting %s", afilename);
+                    }
                     if(result == FIRST_BROKEN) {
                         printf(", ERROR: directory entry invalid");
                     } else {
                         if(result != VALID) {
                             printf(", WARNING: file corrupt");
                         }
-                        FILE *file = fopen(afilename, "wb");
-                        if(file == NULL) {
-                            fprintf(stderr, "\nERROR: Could not open output file %s\n", afilename);
-                            exit(-1);
-                        }
                         while(track != last_track || sector != last_sector) {
                             unsigned char *block = image + linear_sector(type, track, sector) * BLOCKSIZE;
-                            fwrite(block + 2, 1, 254, file);
+                            memcpy(&out_buffer[*out_buffer_i], block + 2, 254);
+                            *out_buffer_i += 254;
                             track = *block;
                             sector = *(block + 1);
                         }
                         unsigned char *block = image + linear_sector(type, track, sector) * BLOCKSIZE;
-                        fwrite(block + 2, 1, *(block + 1) - 1, file);
-                        fclose(file);
+                        memcpy(&out_buffer[*out_buffer_i], block + 2, *(block + 1) - 1);
+                        *out_buffer_i += *(block + 1) - 1;
                     }
                     break;
                 }
             }
-        }
+        }        
     } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
-    if(found) {
+    if(found && !quiet) {
         printf("\n");
     }
     free(blockmap);
 }
 
 int
-main(int argc, char* argv[])
+cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic_disk_info* disk_info)
 {
     imagefile files[MAXNUMFILES_D81];
     memset(files, 0, sizeof files);
@@ -4817,6 +4555,7 @@ main(int argc, char* argv[])
     int dirtracksplit = 1;
     int usedirtrack = 0;
     unsigned int shadowdirtrack = 0;
+    int _print_directory = 0;
 
     int default_first_sector_new_track = 0;
     int first_sector_new_track = 0;
@@ -4833,7 +4572,6 @@ main(int argc, char* argv[])
     int ignore_collision = 0;
     int filetype = 0x82; /* default is closed PRG */
     bool filetype_set = false;
-    bool print_art_commandline = false;
     int allocation_strategy = 1;
 
     /* flags to detect illegal settings */
@@ -4851,7 +4589,7 @@ main(int argc, char* argv[])
     if (argc == 1 || strcmp(argv[argc-1], "-h") == 0) {
         usage();
     }
-
+    
     /* read environment variable for unicode printout */
     char *unicode_env = getenv("CC1541UNICODE");
     if(unicode_env != NULL) {
@@ -4862,7 +4600,13 @@ main(int argc, char* argv[])
     }
 
     for (j = 1; j < argc - 1; j++) {
-        if (strcmp(argv[j], "-n") == 0) {
+        if (strcmp(argv[j], "-D") == 0) {
+            if (argc < j + 2) {
+                fprintf(stderr, "ERROR: Error parsing argument for -D\n");
+                return -1;
+            }
+            _print_directory = 1;
+        } else if (strcmp(argv[j], "-n") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -n\n");
                 return -1;
@@ -5147,8 +4891,6 @@ main(int argc, char* argv[])
         } else if (strcmp(argv[j], "-5") == 0) {
             type = IMAGE_D64_EXTENDED_DOLPHIN_DOS;
             modified = 1;
-        } else if (strcmp(argv[j], "-a") == 0) {
-            print_art_commandline = true;
         } else if(strcmp(argv[j], "-g") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -g\n");
@@ -5338,13 +5080,8 @@ main(int argc, char* argv[])
         }
     }
 
-    /* Print command line before adding anything to the image */
-    if(print_art_commandline) {
-        convert_to_commandline(type, image);
-    }
-
     /* Extract files */
-    extract_files(type, image, extractions, num_extractions);
+    extract_files(type, image, extractions, num_extractions, out_buffer, out_buffer_i);
 
     /* Apply patches */
     apply_patches(type, image, patches, num_patches);
@@ -5362,8 +5099,8 @@ main(int argc, char* argv[])
     int blocks_free = check_bam(type, image);
 
     /* Print directory */
-    if (!quiet) {
-        print_directory(type, image, blocks_free);
+    if (_print_directory) {
+        print_directory(type, image, blocks_free, disk_info);
     }
 
     /* Show directory issues if present */
@@ -5398,4 +5135,17 @@ main(int argc, char* argv[])
     free(image);
 
     return retval;
+}
+
+void extract_prg_from_image(char* image_file, char* prg_name, unsigned char* prg, int* prg_size) {
+    char* argv[] = {"", "-X", prg_name, image_file};
+    vic_disk_info disk_info;
+    cc1541(4, argv, prg, prg_size, &disk_info);
+}
+
+void get_disk_info(char* image_file, vic_disk_info* disk_info) {
+    char* argv[] = {"", "-D", image_file};
+    unsigned char _p[0];
+    int _i = 0;
+    cc1541(3, argv, _p, &_i, disk_info);
 }

@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <sched.h>
 
+//#include <dirent.h>
+
 #include "timing.h"
 #include "display.h"
 #include "vic_io.h"
@@ -19,7 +21,68 @@ extern int _resetted_message_displayed;
 
 extern int addr;
 
+char* image;
+
 int main(int argc, char* argv[]) {
+
+    for (int i=1; i<argc-1; i++) {
+        if (strcmp(argv[i], "--image") == 0) {
+            image = argv[i+1];
+        }
+    }
+
+    struct vic_disk_info disk_info;
+    get_disk_info("/home/noelyoung/omega.d64", &disk_info);
+
+    printf("OK\n");
+
+    return 0;
+
+
+
+
+    /*DIR *d;
+
+    struct dirent *dir;
+
+    d = opendir(image);
+
+    if (d) {
+
+        while ((dir = readdir(d)) != NULL) {
+            if (dir->d_name[0] == '.') continue;
+            printf("%s %ld\n", dir->d_name, strlen(dir->d_name));
+        }
+        closedir(d);
+    }
+
+    return 0;*/
+
+
+
+    /*printf("TEST\n");
+
+    vic_byte prg_buffer[16338];
+    int prg_buffer_i = 0;
+    argv[0] = "";
+    argv[1] = "-X";
+    argv[2] = "omega race";
+    argv[3] = "/home/noelyoung/omega.d64";
+    
+    cc1541(4, argv, prg_buffer, &prg_buffer_i);
+
+    FILE* fptr = fopen("/home/noelyoung/omega_race_neo", "w");
+
+    for (int i=0; i<prg_buffer_i; i++) {
+        //printf("%X ", prg_buffer[i]);
+        putc(prg_buffer[i], fptr);
+    }
+
+    fclose(fptr);
+    printf("%d\n", prg_buffer_i);
+
+    return 0;*/
+
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
             printf("NO ROOT\n");

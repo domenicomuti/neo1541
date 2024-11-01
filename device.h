@@ -3,6 +3,7 @@
 
 #include "display.h"
 #include "vic_io.h"
+#include "cc1541.h"
 
 #define DEVICE       8
 
@@ -18,7 +19,7 @@
 #define MODE_WRITE   1
 
 void reset_device();
-char get_byte();
+vic_byte get_byte();
 void handle_atn();
 void read_bytes();
 void send_bytes();

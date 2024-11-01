@@ -16,11 +16,13 @@ int i_data_buffer = 0;
 vic_byte filename[100];
 int i_filename = 0;
 
+extern char* image;
+
 void reset_device() {
     device_resetted = device_attentioned = device_listening = device_talking = 0;
 }
 
-char get_byte() {
+vic_byte get_byte() {
     vic_byte byte = 0;
 
     //printf("START BYTE TRANSMISSION\n");
@@ -187,12 +189,17 @@ void send_bytes() {
     set_data(0);
     set_clock(1);
 
-    FILE* fptr = fopen("/home/noelyoung/Synthesong.prg", "rb");
-    vic_byte c;
-
+    FILE* fptr = fopen(image, "rb");
     fseek(fptr, 0, SEEK_END);
     int file_size = ftell(fptr);
     fseek(fptr, 0, SEEK_SET);
+
+    /*vic_byte prg_buffer[16384];
+    int file_size = 0;
+    extract_prg_from_image("/home/noelyoung/omega.d64", "omega race", prg_buffer, &file_size);*/
+
+    vic_byte c;
+
     int i_file = 0;
     int retry = 0;
 
@@ -217,6 +224,7 @@ void send_bytes() {
         int eoi = 0;
         
         c = getc(fptr);
+        //c = prg_buffer[i_file];
         //printf("%X - %c - 0x%X\n", i_file, c, c);
         i_file++;
 
