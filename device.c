@@ -210,14 +210,15 @@ void read_directory() {
     int i_memory = 0x1001;
     int i_next_line;
 
-    data_buffer[0] = 0x01; // Start
-    data_buffer[1] = 0x10;
-    i_next_line = 2;
+    data_buffer[0] = i_memory & 0x00FF; // Start
+    data_buffer[1] = (i_memory & 0xFF00) >> 8;
+    i_data_buffer += 2;
+    i_next_line = i_data_buffer;
 
     data_buffer[4] = 0x00; // Line number 0
     data_buffer[5] = 0x00;
 
-    i_data_buffer += 6;
+    i_data_buffer += 4;
 
     memcpy(data_buffer + i_data_buffer, disk_info.header, HEADER_SIZE);
     i_data_buffer += HEADER_SIZE;
@@ -225,13 +226,13 @@ void read_directory() {
     data_buffer[i_data_buffer] = 0x00; // new line
     i_data_buffer++;
     
-    i_memory += i_data_buffer;
+    i_memory += i_data_buffer - 2;
     data_buffer[i_next_line] = i_memory & 0x00FF;
     data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
 
     data_buffer[i_data_buffer] = 0;
     data_buffer[i_data_buffer + 1] = 0;
-    i_data_buffer += 1;
+    i_data_buffer += 2;
 
     FILE* fptr = fopen("/home/noelyoung/test_dir.prg", "wb");
     fwrite(data_buffer, i_data_buffer, 1, fptr);

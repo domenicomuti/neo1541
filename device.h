@@ -24,6 +24,8 @@ void reset_device();
 vic_byte get_byte();
 void handle_atn();
 void read_bytes();
+
+void read_directory();
 void send_bytes();
 
 void print_command_name(vic_byte command);
