@@ -1954,12 +1954,12 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
         exit(-1);
     }
 
-    disk_info->header[0] = ' '; 
-    disk_info->header[1] = 0x12; // Reverse print on
-    disk_info->header[2] = '\"';
-    memcpy(disk_info->header + 3, bam + get_header_offset(type), 16);
-    memcpy(disk_info->header + 19, "\" ", 2);
-    memcpy(disk_info->header + 21, bam + get_id_offset(type), 5);
+    disk_info->header[0] = 0x12; // Reverse print on
+    disk_info->header[1] = '\"';
+    memcpy(disk_info->header + 2, bam + get_header_offset(type), 16);
+    memcpy(disk_info->header + 18, "\" ", 2);
+    memcpy(disk_info->header + 20, bam + get_id_offset(type), 5);
+    disk_info->header[22] = ' ';
 
     int ds = (type == IMAGE_D81) ? 3 : 1;
     int dt = dirtrack(type);

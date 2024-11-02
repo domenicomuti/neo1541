@@ -95,7 +95,7 @@
 /* maximum number of patterns for file extraction */
 #define MAXNUMEXTRACTIONS 32
 
-#define HEADER_SIZE 26
+#define HEADER_SIZE 25
 #define MAX_DIRS 144
 
 typedef struct vic_disk_dir {

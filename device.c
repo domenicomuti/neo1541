@@ -224,15 +224,18 @@ void read_directory() {
 
     data_buffer[i_data_buffer] = 0x00; // new line
     i_data_buffer++;
-
+    
     i_memory += i_data_buffer;
-    data_buffer[i_next_line] = i_memory & 0x0F;
-    data_buffer[i_next_line + 1] = i_memory & 0xF0;
+    data_buffer[i_next_line] = i_memory & 0x00FF;
+    data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
 
     data_buffer[i_data_buffer] = 0;
     data_buffer[i_data_buffer + 1] = 0;
-    data_buffer[i_data_buffer + 2] = 0;
-    i_data_buffer += 2;
+    i_data_buffer += 1;
+
+    FILE* fptr = fopen("/home/noelyoung/test_dir.prg", "wb");
+    fwrite(data_buffer, i_data_buffer, 1, fptr);
+    fclose(fptr);
 }
 
 void send_bytes() {
