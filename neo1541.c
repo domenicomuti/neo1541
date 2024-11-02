@@ -30,6 +30,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    image = "image_examples/omega.d64";
+
     /*struct vic_disk_info disk_info;
     get_disk_info("/home/noelyoung/omega.d64", &disk_info);
 

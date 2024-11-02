@@ -1936,11 +1936,7 @@ print_filetype(int filetype, unsigned char* string_filetype)
     } else {
         memcpy(string_filetype, " ", 1);
     }
-    if(unicode == 1) {
-        memcpy(string_filetype + 1, filetypename_uc[filetype & 0xf], 3);
-    } else {
-        memcpy(string_filetype + 1, filetypename_lc[filetype & 0xf], 3);
-    }
+    memcpy(string_filetype + 1, filetypename_uc[filetype & 0xf], 3);
     if ((filetype & 0x40) != 0) {
         memcpy(string_filetype + 4, "<", 1);
     } else {
@@ -1958,15 +1954,12 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
         exit(-1);
     }
 
-    //printf("\n0 ");
-    //reverse_print_on();
-    //printf("\"");
-    memcpy(disk_info->header, bam + get_header_offset(type), 16);
-    //printf("\" ");
-    memcpy(disk_info->id, bam + get_id_offset(type), 5);
-    //reverse_print_off();
-
-    //printf("\n");
+    disk_info->header[0] = ' '; 
+    disk_info->header[1] = 0x12; // Reverse print on
+    disk_info->header[2] = '\"';
+    memcpy(disk_info->header + 3, bam + get_header_offset(type), 16);
+    memcpy(disk_info->header + 19, "\" ", 2);
+    memcpy(disk_info->header + 21, bam + get_id_offset(type), 5);
 
     int ds = (type == IMAGE_D81) ? 3 : 1;
     int dt = dirtrack(type);
@@ -1984,11 +1977,14 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
             //strcpy(disk_info->dir[i_dir].blocks, _blocks);
             disk_info->dir[i_dir].blocks = blocks;
             disk_info->dir[i_dir].filename_length = get_dirfilename_n(filename);
+            memcpy(disk_info->dir[i_dir].filename, "\"", 1);
             memcpy(
-                &disk_info->dir[i_dir].filename,
+                disk_info->dir[i_dir].filename + 1,
                 filename,
                 disk_info->dir[i_dir].filename_length
             );
+            memcpy(disk_info->dir[i_dir].filename + 1 + disk_info->dir[i_dir].filename_length, "\"", 1);
+            disk_info->dir[i_dir].filename_length += 2;
             print_filetype(filetype, disk_info->dir[i_dir].type);
             i_dir++;
             //printf("\n");
@@ -1996,27 +1992,25 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
     } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
     disk_info->n_dir = i_dir;
     free(blockmap);
-    /*if(unicode == 1) {
-        char* _s_temp;
-        sprintf(_s_temp, "%d BLOCKS FREE.\n", blocks_free);
-        strcat(string_buffer, _s_temp);
-    } else {
-        char* _s_temp;
-        sprintf(_s_temp, "%d blocks free.\n", blocks_free);
-        strcat(string_buffer, _s_temp);
-    }*/
+    disk_info->blocks_free = blocks_free;
 
     /* detect and print bam message */
     if((type == IMAGE_D64 || type == IMAGE_D64_EXTENDED_SPEED_DOS) && bam[BAMMESSAGEOFFSET] != 0) {
         //printf("\nBAM message: \"");
         /* only checking the first byte and hoping for the best... */
-        /*int b = BAMMESSAGEOFFSET;
+        int b = BAMMESSAGEOFFSET;
         unsigned char c;
+        int i_bam = 0;
         while(b < 256 && ((c = bam[b]) != 0)) {
-            putp(c, stdout);
+            disk_info->bam_message[i_bam++] = c;
             b++;
         }
-        printf("\"\n");*/
+        disk_info->bam_message_length = i_bam;
+        //printf("\"\n");
+    }
+    else {
+        memcpy(disk_info->bam_message, "", 1);
+        disk_info->bam_message_length = 0;
     }
 }
 

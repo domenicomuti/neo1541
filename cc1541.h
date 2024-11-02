@@ -95,6 +95,9 @@
 /* maximum number of patterns for file extraction */
 #define MAXNUMEXTRACTIONS 32
 
+#define HEADER_SIZE 26
+#define MAX_DIRS 144
+
 typedef struct vic_disk_dir {
     int blocks;
     unsigned char filename[FILENAMEMAXSIZE];
@@ -103,10 +106,12 @@ typedef struct vic_disk_dir {
 } vic_disk_dir;
 
 typedef struct vic_disk_info {
-    unsigned char header[16];
-    unsigned char id[5];
-    vic_disk_dir dir[1024];
+    unsigned char header[HEADER_SIZE]; // header 16 chars + id 5 chars + other chars
+    vic_disk_dir dir[MAX_DIRS];
     int n_dir;
+    int blocks_free;
+    unsigned char bam_message[BAMMESSAGEMAXSIZE];
+    int bam_message_length;
 } vic_disk_info;
 
 void extract_prg_from_image(char* image_file, char* prg_name, unsigned char* prg, int* prg_size);

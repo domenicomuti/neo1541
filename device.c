@@ -10,13 +10,24 @@ int device_listening = 0;
 int device_talking = 0;
 int open_mode;
 
-vic_byte data_buffer[174848];
+#define MAX_DATA_BUFFER_SIZE 168656
+
+vic_byte data_buffer[MAX_DATA_BUFFER_SIZE];
 int i_data_buffer = 0;
 
 vic_byte filename[100];
 int i_filename = 0;
 
 extern char* image;
+
+int vic_string_equal(vic_byte* string1, vic_byte* string2, int n1, int n2) {
+    if (n1 != n2) return 0;
+    for (int i=0; i<n1; i++) {
+        if (string1[n1] != string2[n1])
+            return 0;
+    }
+    return 1;
+}
 
 void reset_device() {
     device_resetted = device_attentioned = device_listening = device_talking = 0;
@@ -187,16 +198,56 @@ void read_bytes() {
     printf("%sGET DATA OFF\n%s", COLOR_MAGENTA, COLOR_RESET);
 }
 
+void read_directory() {
+    struct vic_disk_info disk_info;
+    get_disk_info(image, &disk_info);
+
+    i_data_buffer = 0;
+    for (int i=0; i<MAX_DATA_BUFFER_SIZE; i++) {
+        data_buffer[i] = 0;
+    }
+
+    int i_memory = 0x1001;
+    int i_next_line;
+
+    data_buffer[0] = 0x01; // Start
+    data_buffer[1] = 0x10;
+    i_next_line = 2;
+
+    data_buffer[4] = 0x00; // Line number 0
+    data_buffer[5] = 0x00;
+
+    i_data_buffer += 6;
+
+    memcpy(data_buffer + i_data_buffer, disk_info.header, HEADER_SIZE);
+    i_data_buffer += HEADER_SIZE;
+
+    data_buffer[i_data_buffer] = 0x00; // new line
+    i_data_buffer++;
+
+    i_memory += i_data_buffer;
+    data_buffer[i_next_line] = i_memory & 0x0F;
+    data_buffer[i_next_line + 1] = i_memory & 0xF0;
+
+    data_buffer[i_data_buffer] = 0;
+    data_buffer[i_data_buffer + 1] = 0;
+    data_buffer[i_data_buffer + 2] = 0;
+    i_data_buffer += 2;
+}
+
 void send_bytes() {
     printf("SENDING DATA\n");
 
     set_data(0);
     set_clock(1);
 
-    FILE* fptr = fopen(image, "rb");
+    /*FILE* fptr = fopen(image, "rb");
     fseek(fptr, 0, SEEK_END);
     int file_size = ftell(fptr);
-    fseek(fptr, 0, SEEK_SET);
+    fseek(fptr, 0, SEEK_SET);*/
+    
+    if (vic_string_equal(filename, (vic_byte*)"$", i_filename, 1))
+        read_directory();
 
     /*vic_byte prg_buffer[16384];
     int file_size = 0;
@@ -227,13 +278,13 @@ void send_bytes() {
 
         int eoi = 0;
         
-        c = getc(fptr);
-        //c = prg_buffer[i_file];
+        //c = getc(fptr);
+        c = data_buffer[i_file];
         i_file++;
 
-        set_progress_bar(i_file * 100 / file_size);
+        set_progress_bar(i_file * 100 / i_data_buffer);
 
-        if (i_file == file_size) {
+        if (i_file == i_data_buffer) {
             eoi = 1;
             microsleep(200);
             wait_data(1, 0);
@@ -261,7 +312,7 @@ void send_bytes() {
         if (!wait_data(1, 1000)) {
             retry++;
             i_file--;
-            fseek(fptr, i_file, SEEK_SET);
+            //fseek(fptr, i_file, SEEK_SET);
             microsleep(100);
             continue;
         }
@@ -276,7 +327,7 @@ void send_bytes() {
     set_clock(0);
     set_data(0);
 
-    fclose(fptr);
+    //fclose(fptr);
 
     device_talking = 0;
 }
