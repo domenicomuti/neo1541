@@ -100,8 +100,7 @@
 
 typedef struct vic_disk_dir {
     int blocks;
-    unsigned char filename[FILENAMEMAXSIZE];
-    int filename_length;
+    unsigned char filename[FILENAMEMAXSIZE + 2];
     unsigned char type[5];
 } vic_disk_dir;
 

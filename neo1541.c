@@ -23,6 +23,10 @@ extern int addr;
 
 char* image;
 
+#ifdef _WIN32
+    extern LARGE_INTEGER lpFrequency;
+#endif
+
 int main(int argc, char* argv[]) {
     for (int i=1; i<argc-1; i++) {
         if (strcmp(argv[i], "--image") == 0) {
@@ -33,11 +37,15 @@ int main(int argc, char* argv[]) {
     image = "image_examples/omega.d64";
 
     struct vic_disk_info disk_info;
-    get_disk_info("/home/noelyoung/omega.d64", &disk_info);
+    get_disk_info("image_examples/omega.d64", &disk_info);
 
     printf("OK\n");
 
     read_directory();
+
+    #ifdef _WIN32
+        system("pause");
+    #endif
 
     return 0;
 
@@ -85,7 +93,7 @@ int main(int argc, char* argv[]) {
     printf("%d\n", prg_buffer_i);
 
     return 0;*/
-
+#ifdef __linux__
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
             printf("NO ROOT\n");
@@ -98,7 +106,9 @@ int main(int argc, char* argv[]) {
     sched_setscheduler(0, SCHED_FIFO, &_sched_param);
 
     probe_microsleep_offset();
-
+#elif _WIN32
+    QueryPerformanceFrequency(&lpFrequency);
+#endif
     /*for (int i=0; i<20; i++) {
         suseconds_t a = get_microsec();
         microsleep(60);
@@ -107,7 +117,7 @@ int main(int argc, char* argv[]) {
     return 0;*/
 
     while (1) {
-        outb(0xC0, addr+2); // Reset PCR
+        OUTB(0xC0, addr+2); // Reset PCR
 
         while (resetted()) {
             microsleep(1000);

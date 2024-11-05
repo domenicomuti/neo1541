@@ -20,6 +20,10 @@ int i_filename = 0;
 
 extern char* image;
 
+#ifdef _WIN32
+    extern LARGE_INTEGER lpFrequency;
+#endif
+
 int vic_string_equal(vic_byte* string1, vic_byte* string2, int n1, int n2) {
     if (n1 != n2) return 0;
     for (int i=0; i<n1; i++) {
@@ -42,42 +46,42 @@ vic_byte get_byte() {
 
     // bit 1
     wait_clock(0);
-    byte = (inb(addr+1) & 0x40) >> 6;
+    byte = (INB(addr+1) & 0x40) >> 6;
     wait_clock(1);
 
     // bit 2
     wait_clock(0);
-    byte |= (inb(addr+1) & 0x40) >> 5;
+    byte |= (INB(addr+1) & 0x40) >> 5;
     wait_clock(1);
 
     // bit 3
     wait_clock(0);
-    byte |= (inb(addr+1) & 0x40) >> 4;
+    byte |= (INB(addr+1) & 0x40) >> 4;
     wait_clock(1);
 
     // bit 4
     wait_clock(0);
-    byte |= (inb(addr+1) & 0x40) >> 3;
+    byte |= (INB(addr+1) & 0x40) >> 3;
     wait_clock(1);
 
     // bit 5
     wait_clock(0);
-    byte |= (inb(addr+1) & 0x40) >> 2;
+    byte |= (INB(addr+1) & 0x40) >> 2;
     wait_clock(1);
     
     // bit 6
     wait_clock(0);
-    byte |= (inb(addr+1) & 0x40) >> 1;
+    byte |= (INB(addr+1) & 0x40) >> 1;
     wait_clock(1);
 
     // bit 7
     wait_clock(0);
-    byte |= (inb(addr+1) & 0x40);
+    byte |= (INB(addr+1) & 0x40);
     wait_clock(1);
 
     // bit 8
     wait_clock(0);
-    byte |= (inb(addr+1) & 0x40) << 1;
+    byte |= (INB(addr+1) & 0x40) << 1;
     wait_clock(1);
 
     //printf("%ld\n", get_microsec() - a);
@@ -207,12 +211,12 @@ void read_directory() {
         data_buffer[i] = 0;
     }
 
-    int i_memory = 0x1001;
+    int i_memory_start = 0x1001;
+    int i_memory = i_memory_start;
     int i_next_line;
 
-    data_buffer[0] = i_memory & 0x00FF; // Start
-    data_buffer[1] = (i_memory & 0xFF00) >> 8;
-    i_data_buffer += 2;
+    data_buffer[i_data_buffer++] = i_memory_start & 0x00FF; // Start
+    data_buffer[i_data_buffer++] = (i_memory_start & 0xFF00) >> 8;
     i_next_line = i_data_buffer;
 
     data_buffer[4] = 0x00; // Line number 0
@@ -226,15 +230,58 @@ void read_directory() {
     data_buffer[i_data_buffer] = 0x00; // new line
     i_data_buffer++;
     
-    i_memory += i_data_buffer - 2;
+    i_memory = i_memory_start + i_data_buffer - 2;
     data_buffer[i_next_line] = i_memory & 0x00FF;
     data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
 
-    data_buffer[i_data_buffer] = 0;
-    data_buffer[i_data_buffer + 1] = 0;
-    i_data_buffer += 2;
+    for (int i=0; i<disk_info.n_dir; i++) {
+        i_next_line = i_data_buffer;
+        
+        i_data_buffer += 2;
+        data_buffer[i_data_buffer++] = disk_info.dir[i].blocks & 0x00FF;
+        data_buffer[i_data_buffer++] = (disk_info.dir[i].blocks & 0xFF00) >> 8;
 
-    FILE* fptr = fopen("/home/noelyoung/test_dir.prg", "wb");
+        int start_offset;
+        if (disk_info.dir[i].blocks < 10) start_offset = 3;
+        else if (disk_info.dir[i].blocks < 100) start_offset = 2;
+        else if (disk_info.dir[i].blocks < 1000) start_offset = 1;
+        for (int j=0; j<start_offset; j++) {
+            data_buffer[j + i_data_buffer] = ' ';
+        }
+        i_data_buffer += start_offset;
+
+        memcpy(data_buffer + i_data_buffer, disk_info.dir[i].filename, FILENAMEMAXSIZE + 2);
+        i_data_buffer += FILENAMEMAXSIZE + 2;
+
+        memcpy(data_buffer + i_data_buffer, disk_info.dir[i].type, 5);
+        i_data_buffer += 5;
+
+        data_buffer[i_data_buffer] = 0x00; // new line
+        i_data_buffer++;
+
+        i_memory = i_memory_start + i_data_buffer;
+        data_buffer[i_next_line] = i_memory & 0x00FF;
+        data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
+    }
+
+    i_next_line = i_data_buffer;
+
+    i_data_buffer += 2;
+    data_buffer[i_data_buffer++] = disk_info.blocks_free & 0x00FF; // Start
+    data_buffer[i_data_buffer++] = (disk_info.blocks_free & 0xFF00) >> 8;
+
+    memcpy(data_buffer + i_data_buffer, (unsigned char*)"BLOCKS FREE.              ", 26);
+    i_data_buffer += 26;
+    data_buffer[i_data_buffer++] = 0;
+
+    i_memory = i_memory_start + i_data_buffer;
+    data_buffer[i_next_line] = i_memory & 0x00FF;
+    data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
+
+    data_buffer[i_data_buffer++] = 0;
+    data_buffer[i_data_buffer++] = 0;
+
+    FILE* fptr = fopen("image_examples/test_dir.prg", "wb");
     fwrite(data_buffer, i_data_buffer, 1, fptr);
     fclose(fptr);
 }
@@ -296,20 +343,43 @@ void send_bytes() {
             microsleep(30);
         }
 
-        suseconds_t a;
-        for (int i=0; i<8; i++) {
-            a = get_microsec();
-            set_clock(1);
-            set_data((~c >> i) & 1);
-            while ((get_microsec() - a) < 60) {}
-            //microsleep(60 - (get_microsec() - a));
+        #ifdef __linux__
+            suseconds_t a;
+            for (int i=0; i<8; i++) {
+                a = get_microsec();
+                set_clock(1);
+                set_data((~c >> i) & 1);
+                while ((get_microsec() - a) < 60) {}
+                //microsleep(60 - (get_microsec() - a));
 
-            a = get_microsec();
-            set_clock(0);
-            while ((get_microsec() - a) < 60) {}
-            //microsleep(60 - (get_microsec() - a));
-            set_data(0);
-        }
+                a = get_microsec();
+                set_clock(0);
+                while ((get_microsec() - a) < 60) {}
+                //microsleep(60 - (get_microsec() - a));
+                set_data(0);
+            }
+        #elif _WIN32
+            LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
+            for (int i=0; i<8; i++) {
+                QueryPerformanceCounter(&StartingTime);
+                set_clock(1);
+                set_data((~c >> i) & 1);
+                QueryPerformanceCounter(&EndingTime);
+                ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
+                ElapsedMicroseconds.QuadPart *= 1000000;
+                ElapsedMicroseconds.QuadPart /= lpFrequency.QuadPart;
+                while (ElapsedMicroseconds.QuadPart < 60) {}
+
+                QueryPerformanceCounter(&StartingTime);
+                set_clock(0);
+                QueryPerformanceCounter(&EndingTime);
+                ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
+                ElapsedMicroseconds.QuadPart *= 1000000;
+                ElapsedMicroseconds.QuadPart /= lpFrequency.QuadPart;
+                while (ElapsedMicroseconds.QuadPart < 60) {}
+                set_data(0);
+            }
+        #endif
 
         set_clock(1);
 

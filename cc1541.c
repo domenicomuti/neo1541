@@ -1972,22 +1972,21 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
 
         if (filetype != FILETYPEDEL) {
             unsigned char* filename = (unsigned char*)image + dirblock + FILENAMEOFFSET;
-            //char _blocks[10];
-            //sprintf(_blocks, "%-3d  ", blocks);
-            //strcpy(disk_info->dir[i_dir].blocks, _blocks);
+
             disk_info->dir[i_dir].blocks = blocks;
-            disk_info->dir[i_dir].filename_length = get_dirfilename_n(filename);
+            int filename_length = get_dirfilename_n(filename);
             memcpy(disk_info->dir[i_dir].filename, "\"", 1);
             memcpy(
                 disk_info->dir[i_dir].filename + 1,
                 filename,
-                disk_info->dir[i_dir].filename_length
+                filename_length
             );
-            memcpy(disk_info->dir[i_dir].filename + 1 + disk_info->dir[i_dir].filename_length, "\"", 1);
-            disk_info->dir[i_dir].filename_length += 2;
+            memcpy(disk_info->dir[i_dir].filename + 1 + filename_length, "\"", 1);
+            for (int i=filename_length + 2; i<FILENAMEMAXSIZE+2; i++) {
+                disk_info->dir[i_dir].filename[i] = ' ';
+            }
             print_filetype(filetype, disk_info->dir[i_dir].type);
             i_dir++;
-            //printf("\n");
         }
     } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
     disk_info->n_dir = i_dir;
