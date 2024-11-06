@@ -211,17 +211,16 @@ void read_directory() {
         data_buffer[i] = 0;
     }
 
-    int i_memory_start = 0x1001;
-    int i_memory = i_memory_start;
+    int i_memory = 0x1001;
+    int i_memory_start = i_memory - 2;
     int i_next_line;
 
-    data_buffer[i_data_buffer++] = i_memory_start & 0x00FF; // Start
-    data_buffer[i_data_buffer++] = (i_memory_start & 0xFF00) >> 8;
+    data_buffer[i_data_buffer++] = i_memory & 0x00FF; // Start
+    data_buffer[i_data_buffer++] = (i_memory & 0xFF00) >> 8;
     i_next_line = i_data_buffer;
-
+    
     data_buffer[4] = 0x00; // Line number 0
     data_buffer[5] = 0x00;
-
     i_data_buffer += 4;
 
     memcpy(data_buffer + i_data_buffer, disk_info.header, HEADER_SIZE);
@@ -230,7 +229,7 @@ void read_directory() {
     data_buffer[i_data_buffer] = 0x00; // new line
     i_data_buffer++;
     
-    i_memory = i_memory_start + i_data_buffer - 2;
+    i_memory = i_memory_start + i_data_buffer;
     data_buffer[i_next_line] = i_memory & 0x00FF;
     data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
 
@@ -267,7 +266,7 @@ void read_directory() {
     i_next_line = i_data_buffer;
 
     i_data_buffer += 2;
-    data_buffer[i_data_buffer++] = disk_info.blocks_free & 0x00FF; // Start
+    data_buffer[i_data_buffer++] = disk_info.blocks_free & 0x00FF; // Blocks free
     data_buffer[i_data_buffer++] = (disk_info.blocks_free & 0xFF00) >> 8;
 
     memcpy(data_buffer + i_data_buffer, (unsigned char*)"BLOCKS FREE.              ", 26);
@@ -280,6 +279,8 @@ void read_directory() {
 
     data_buffer[i_data_buffer++] = 0;
     data_buffer[i_data_buffer++] = 0;
+
+    // TODO: BAM MESSAGE
 
     FILE* fptr = fopen("image_examples/test_dir.prg", "wb");
     fwrite(data_buffer, i_data_buffer, 1, fptr);
