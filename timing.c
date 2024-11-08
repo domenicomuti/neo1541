@@ -12,7 +12,7 @@ suseconds_t get_microsec() {
 
 void probe_microsleep_offset() {
     int _microsleep_offset = 0;
-    for (int i=0; i<100; i++) {
+    for (int i = 0; i < 100; i++) {
         suseconds_t a = get_microsec();
         microsleep(1);
         _microsleep_offset += get_microsec() - a;
@@ -20,7 +20,7 @@ void probe_microsleep_offset() {
     microsleep_offset = _microsleep_offset * 10;
 }
 
-#elif _WIN32
+#elif _WIN64
     LARGE_INTEGER lpFrequency;
 #endif
 

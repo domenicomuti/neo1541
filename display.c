@@ -10,11 +10,11 @@ void set_progress_bar(int percent) {
     if (device_resetted) return;
 
     char progress_bar[200] = GREEN_SQUARE;
-    for (int i=0; i<percent; i++) {
+    for (int i = 0; i < percent; i++) {
         strcat(progress_bar, " ");
     }
     strcat(progress_bar, COLOR_RESET);
-    for (int i=percent; i<100; i++) {
+    for (int i = percent; i < 100; i++) {
         strcat(progress_bar, " ");
     }
 

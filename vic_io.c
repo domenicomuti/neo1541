@@ -4,7 +4,7 @@ extern int device_resetted;
 
 int addr = 0xd100;
 
-#ifdef _WIN32
+#ifdef _WIN64
     extern LARGE_INTEGER lpFrequency;
 #endif
 
@@ -60,7 +60,7 @@ int wait_data(int value, int timeout) {
             if ((timeout > 0) && ((get_microsec() - a) > timeout))
                 return 0;
         }
-    #elif _WIN32
+    #elif _WIN64
         LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
         QueryPerformanceCounter(&StartingTime);
         while ((INB(addr+1) & 0x40) == value) {
@@ -107,7 +107,7 @@ int eoi() {
                 break;
             }
         }
-    #elif _WIN32
+    #elif _WIN64
         LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
         QueryPerformanceCounter(&StartingTime);
         int eoi = 0;

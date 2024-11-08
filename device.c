@@ -18,15 +18,15 @@ int i_data_buffer = 0;
 vic_byte filename[100];
 int i_filename = 0;
 
-extern char* image;
+extern char *image;
 
-#ifdef _WIN32
+#ifdef _WIN64
     extern LARGE_INTEGER lpFrequency;
 #endif
 
 int vic_string_equal(vic_byte* string1, vic_byte* string2, int n1, int n2) {
     if (n1 != n2) return 0;
-    for (int i=0; i<n1; i++) {
+    for (int i = 0; i < n1; i++) {
         if (string1[n1] != string2[n1])
             return 0;
     }
@@ -190,7 +190,7 @@ void read_bytes() {
     fclose(fptr);*/
 
     if ((last_command & 0xF0) == OPEN) {
-        for (int i=0; i<i_data_buffer; i++) {
+        for (int i = 0; i < i_data_buffer; i++) {
             filename[i] = data_buffer[i];
         }
         i_filename = i_data_buffer;
@@ -204,10 +204,14 @@ void read_bytes() {
 
 void read_directory() {
     struct vic_disk_info disk_info;
-    get_disk_info(image, &disk_info);
+    if (!get_disk_info(&disk_info)) {
+        return;
+    }
+
+
 
     i_data_buffer = 0;
-    for (int i=0; i<MAX_DATA_BUFFER_SIZE; i++) {
+    for (int i = 0; i < MAX_DATA_BUFFER_SIZE; i++) {
         data_buffer[i] = 0;
     }
 
@@ -233,7 +237,7 @@ void read_directory() {
     data_buffer[i_next_line] = i_memory & 0x00FF;
     data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
 
-    for (int i=0; i<disk_info.n_dir; i++) {
+    for (int i = 0; i < disk_info.n_dir; i++) {
         i_next_line = i_data_buffer;
         
         i_data_buffer += 2;
@@ -244,7 +248,7 @@ void read_directory() {
         if (disk_info.dir[i].blocks < 10) start_offset = 3;
         else if (disk_info.dir[i].blocks < 100) start_offset = 2;
         else if (disk_info.dir[i].blocks < 1000) start_offset = 1;
-        for (int j=0; j<start_offset; j++) {
+        for (int j = 0; j < start_offset; j++) {
             data_buffer[j + i_data_buffer] = ' ';
         }
         i_data_buffer += start_offset;
@@ -346,7 +350,7 @@ void send_bytes() {
 
         #ifdef __linux__
             suseconds_t a;
-            for (int i=0; i<8; i++) {
+            for (int i = 0; i < 8; i++) {
                 a = get_microsec();
                 set_clock(1);
                 set_data((~c >> i) & 1);
@@ -359,9 +363,9 @@ void send_bytes() {
                 //microsleep(60 - (get_microsec() - a));
                 set_data(0);
             }
-        #elif _WIN32
+        #elif _WIN64
             LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
-            for (int i=0; i<8; i++) {
+            for (int i = 0; i < 8; i++) {
                 QueryPerformanceCounter(&StartingTime);
                 set_clock(1);
                 set_data((~c >> i) & 1);

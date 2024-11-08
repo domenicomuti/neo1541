@@ -6,7 +6,7 @@
     #include <time.h>
     suseconds_t get_microsec();
     void probe_microsleep_offset();
-#elif _WIN32
+#elif _WIN64
     #include <windows.h>
 #endif
 

@@ -36,7 +36,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <wchar.h>
+#include <dirent.h>
+#include <errno.h>
+#include "uthash.h"
 #include "cc1541.h"
+#include "string_functions.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -51,6 +55,97 @@
 #else
 #define FILESEPARATOR '/'
 #endif
+
+#define DIRENTRIESPERBLOCK     8
+#define DIRTRACK_D41_D71       18
+#define DIRTRACK_D81           40
+#define SECTORSPERTRACK_D81    40
+#define MAXNUMFILES_D81        ((SECTORSPERTRACK_D81 - 3) * DIRENTRIESPERBLOCK)
+#define DIRENTRYSIZE           32
+#define BLOCKSIZE              256
+#define BLOCKOVERHEAD          2
+#define TRACKLINKOFFSET        0
+#define SECTORLINKOFFSET       1
+#define FILETYPEOFFSET         2
+#define FILETYPEDEL            0
+#define FILETYPESEQ            1
+#define FILETYPEPRG            2
+#define FILETYPEUSR            3
+#define FILETYPEREL            4
+#define FILETYPETRANSWARPMASK  0x100
+#define FILETRACKOFFSET        3
+#define FILESECTOROFFSET       4
+#define FILENAMEOFFSET         5
+#define FILENAMEEMPTYCHAR      (' ' | 0x80)
+#define TRANSWARPSIGNATROFFSLO 21
+#define TRANSWARPSIGNATURELO   'T'
+#define TRANSWARPSIGNATROFFSHI 22
+#define TRANSWARPSIGNATUREHI   'W'
+#define DIRDATACHECKSUMOFFSET  23
+#define TRANSWARPTRACKOFFSET   24
+#define FILECHECKSUMOFFSET     25
+#define LOADADDRESSLOOFFSET    26
+#define LOADADDRESSHIOFFSET    27
+#define ENDADDRESSLOOFFSET     28
+#define ENDADDRESSHIOFFSET     29
+#define FILEBLOCKSLOOFFSET     30
+#define FILEBLOCKSHIOFFSET     31
+#define D64NUMBLOCKS           (664 + 19)
+#define D64SIZE                (D64NUMBLOCKS * BLOCKSIZE)
+#define D64SIZE_EXTENDED       (D64SIZE + 5 * 17 * BLOCKSIZE)
+#define D71SIZE                (D64SIZE * 2)
+#define D81SIZE                (D81NUMTRACKS * SECTORSPERTRACK_D81 * BLOCKSIZE)
+#define D64NUMTRACKS           35
+#define D64NUMTRACKS_EXTENDED  (D64NUMTRACKS + 5)
+#define D71NUMTRACKS           (D64NUMTRACKS * 2)
+#define D81NUMTRACKS           80
+#define BAM_OFFSET_SPEED_DOS   0xc0
+#define BAM_OFFSET_DOLPHIN_DOS 0xac
+#define DIRSLOTEXISTS          0
+#define DIRSLOTFOUND           1
+#define DIRSLOTNOTFOUND        2
+/* for sector chain analysis */
+#define UNALLOCATED            0 /* unused as of now */
+#define ALLOCATED              1 /* part of a valid sector chain */
+#define FILESTART              2 /* analysed to be the start of a sector chain */
+#define FILESTART_TRUNCATED    3 /* analysed to be the start of a sector chain, was truncated */
+#define POTENTIALLYALLOCATED   4 /* currently being analysed */
+/* error codes for sector chain validation */
+#define VALID                  0 /* valid chain */
+#define ILLEGAL_TRACK          1 /* ends with illegal track pointer */
+#define ILLEGAL_SECTOR         2 /* ends with illegal sector pointer */
+#define LOOP                   3 /* loop in current chain */
+#define COLLISION              4 /* collision with other file */
+#define CHAINED                5 /* ends at another file start */
+#define CHAINED_TRUNCATED      6 /* ends at start of a truncated file */
+#define FIRST_BROKEN           7 /* issue already in first sector */
+/* undelete levels */
+#define RESTORE_DIR_ONLY        0 /* Only restore all dir entries without touching any t/s links */
+#define RESTORE_VALID_FILES     1 /* Fix dir entries for files with valid t/s chains */
+#define RESTORE_VALID_CHAINS    2 /* Also add wild sector chains with valid t/s chains */
+#define RESTORE_INVALID_FILES   3 /* Also fix dir entries with invalid t/s chains */
+#define RESTORE_INVALID_CHAINS  4 /* Also add and fix wild invalid t/s chains */
+#define RESTORE_INVALID_SINGLES 5 /* Also include single block files */
+/* error codes for directory */
+#define DIR_OK                 0
+#define DIR_ILLEGAL_TS         1
+#define DIR_CYCLIC_TS          2
+
+#define TRANSWARP                "TRANSWARP"
+#define TRANSWARPBASEBLOCKSIZE   0xc0
+#define TRANSWARPBUFFERBLOCKSIZE 0x1f
+#define TRANSWARPBLOCKSIZE       (TRANSWARPBASEBLOCKSIZE + TRANSWARPBUFFERBLOCKSIZE)
+#define TRANSWARPKEYSIZE         29 /* 232 bits */
+#define TRANSWARPKEYHASHROUNDS   33
+
+/* maximum number of files for transwarp order permutation */
+#define MAXPERMUTEDFILES 11
+/* maximum number of free sectors on an extended D64 */
+#define MAXFREESECTORS 768
+/* maximum number of patches */
+#define MAXNUMPATCHES 32
+/* maximum number of patterns for file extraction */
+#define MAXNUMEXTRACTIONS 32
 
 /* Table for conversion of uppercase PETSCII to Unicode */
 static unsigned int p2u_uppercase_tab[256] = {
@@ -192,6 +287,8 @@ static int max_hash_length = 16;     /* number of bytes of the filenames to calc
 static int unicode         = 0;      /* which unicode mapping to use: 0 = none, 1 = upper case, 2 = lower case */
 static int modified        = 0;      /* image needs to be written */
 static int dir_error       = DIR_OK; /* directory has an error */
+
+extern char *image;
 
 /* Prints the command line help */
 static void
@@ -415,6 +512,8 @@ a2p(unsigned char a)
         return 0xa4;
     case 0x7e:
         return 0xff;
+    case '\\':
+        return 0x6d;
     default:
         if ((a >= 0x5b) && (a < 0x5f)) {
             return a;
@@ -1991,7 +2090,7 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
     } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
     disk_info->n_dir = i_dir;
     free(blockmap);
-    disk_info->blocks_free = blocks_free;
+    disk_info->blocks_free = (unsigned short)blocks_free;
 
     /* detect and print bam message */
     if((type == IMAGE_D64 || type == IMAGE_D64_EXTENDED_SPEED_DOS) && bam[BAMMESSAGEOFFSET] != 0) {
@@ -5131,15 +5230,195 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
     return retval;
 }
 
-void extract_prg_from_image(char* image_file, char* prg_name, unsigned char* prg, int* prg_size) {
-    char* argv[] = {"", "-X", prg_name, image_file};
-    vic_disk_info disk_info;
-    cc1541(4, argv, prg, prg_size, &disk_info);
+void extract_prg_from_image(char* prg_name, unsigned char* prg, int* prg_size) {
+    char* argv[] = {"", "-X", prg_name, image};
+    vic_disk_info *disk_info;
+    cc1541(4, argv, prg, prg_size, disk_info);
 }
 
-void get_disk_info(char* image_file, vic_disk_info* disk_info) {
-    char* argv[] = {"", "-D", image_file};
-    unsigned char _p[0];
-    int _i = 0;
-    cc1541(3, argv, _p, &_i, disk_info);
+unsigned short get_file_blocks(char *path, char *filename) {
+    char *_path = (char *)calloc(strlen(path) + strlen(filename) + 2, sizeof(char));
+    strcpy(_path, path);
+    int offset = 0;
+    #ifdef __linux__
+        if (_path[strlen(path) - 1] != '/') {
+            _path[strlen(path)] = '/';
+            offset = 1;
+        }
+    #elif _WIN64
+        if (_path[strlen(path) - 1] != '\\') {
+            _path[strlen(path)] = '\\';
+            offset = 1;
+        }
+    #endif
+    strcpy(_path + strlen(path) + offset, filename);
+
+    #ifdef __linux__
+        // TODO
+    #elif _WIN64
+        unsigned long long blocks;
+        int fh = _open(_path, _O_BINARY | _O_RDONLY);
+        if (fh == -1) {
+            blocks = 0;
+        }
+        else {
+            _lseeki64(fh, 0L, SEEK_END);
+            blocks = ceil(_telli64(fh) / 256.0);
+            _close(fh);
+        }
+    #endif
+
+    free(_path);
+
+    //printf("%s ", _path);
+
+    if (blocks > 999) blocks = 999;
+
+    //printf("%d\n", blocks);
+
+    return (unsigned short)blocks;
+}
+
+int get_disk_info(vic_disk_info* disk_info) {
+    int _return = 1;
+
+    struct file_hash_entry {
+        char filename[FILENAMEMAXSIZE + 1];
+        int n;
+        UT_hash_handle hh;
+    };
+    struct file_hash_entry *files = NULL;
+
+    DIR *dir;
+    struct dirent *entry;
+    dir = opendir(image);
+    if (dir) {
+        memset(disk_info->header, ' ', HEADER_SIZE);
+        disk_info->header[0] = 0x12;
+        disk_info->header[1] = '\"';
+        int image_len = strlen(image);
+        
+        int i_delimitator = image_len;
+
+        #ifdef __linux__
+            if (image_len == 1 && image[0] == '/') i_delimitator = -1;
+        #elif _WIN64
+            if (image_len == 3 && image[1] == ':') i_delimitator = -1;
+        #endif
+
+        for (i_delimitator; i_delimitator>=0; i_delimitator--) {
+            #ifdef __linux__
+                char delimitator = '/';
+            #elif _WIN64
+                char delimitator = '\\';
+            #endif
+
+            if (image[i_delimitator] == delimitator) break;
+        }
+
+        image_len -= i_delimitator + 1;
+        char *_image = (char *)calloc(image_len + 1, sizeof(char));
+        strcpy(_image, image + i_delimitator + 1);
+
+        strtolower(_image);
+        for (int i = 0; i < strlen(_image); i++) {
+            _image[i] = a2p(_image[i]);
+        }
+        memcpy(
+            disk_info->header + 2,
+            _image,
+            image_len > (HEADER_SIZE - 9) ? (HEADER_SIZE - 9) : image_len
+        );
+        memcpy(disk_info->header + HEADER_SIZE - 7, (unsigned char *)"\" ID 00", 7);
+        free(_image);
+
+        disk_info->n_dir = 0;
+        disk_info->blocks_free = 0;
+
+        while ((entry = readdir(dir)) != NULL) {
+            if (strcmp(entry->d_name, ".") == 0) continue;
+
+            memset(disk_info->dir[disk_info->n_dir].filename, ' ', FILENAMEMAXSIZE + 2);
+            disk_info->dir[disk_info->n_dir].filename[0] = '\"';
+
+            char *d_name = (char *)malloc((strlen(entry->d_name) + 1) * sizeof(char));
+            strcpy(d_name, entry->d_name);
+            strtolower(d_name);
+            for (int i=0; i<strlen(d_name); i++) {
+                d_name[i] = a2p(d_name[i]);
+            }
+
+            if (entry->d_namlen <= FILENAMEMAXSIZE) {
+                memcpy(disk_info->dir[disk_info->n_dir].filename + 1, d_name, entry->d_namlen);
+                disk_info->dir[disk_info->n_dir].filename[entry->d_namlen + 1] = '\"';
+            }
+            else {
+                char filename[FILENAMEMAXSIZE + 1];
+                strncpy(filename, d_name, FILENAMEMAXSIZE);
+                filename[FILENAMEMAXSIZE] = '\0';
+
+                struct file_hash_entry *f;
+                
+                HASH_FIND_STR(files, filename, f);
+                if (f == NULL) {
+                    f = (struct file_hash_entry *)malloc(sizeof *f);
+                    strcpy(f->filename, filename);
+                    f->n = 1;
+                    HASH_ADD_STR(files, filename, f);
+                }
+                else {
+                    f->n++;
+                }
+                
+                char _t1[4];
+                sprintf(_t1, "%X", f->n);
+                char *_t2 = (char *)calloc(FILENAMEMAXSIZE + 1, sizeof(char));
+                strncpy(_t2, filename, FILENAMEMAXSIZE - strlen(_t1) - 1);
+                _t2[FILENAMEMAXSIZE - strlen(_t1) - 1] = '#';
+                strncpy(_t2 + FILENAMEMAXSIZE - strlen(_t1), _t1, strlen(_t1));
+                strcpy(filename, _t2);
+                free(_t2);
+
+                memcpy(disk_info->dir[disk_info->n_dir].filename + 1, filename, FILENAMEMAXSIZE);
+                disk_info->dir[disk_info->n_dir].filename[FILENAMEMAXSIZE + 1] = '\"';
+            }
+            free(d_name);
+
+            memcpy(disk_info->dir[disk_info->n_dir].type, (unsigned char *)" PRG ", 5);
+            disk_info->dir[disk_info->n_dir].blocks = get_file_blocks(image, entry->d_name);
+            disk_info->n_dir++;
+        }
+        closedir(dir);
+    }
+    else {
+        FILE *fptr = fopen(image, "rb");
+        if (fptr == NULL) {
+            _return = 0;
+            printf("FILE NOT EXISTS\n"); // TODO: gestire con errno -> https://man7.org/linux/man-pages/man2/open.2.html
+        }
+        else {
+            char ext[4] = {0};
+            substr(ext, image, -3, 3);
+            strtolower(ext);
+
+            if (strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) {
+                char *argv[] = {"", "-D", image};
+                unsigned char *_p;
+                int *_i;
+                cc1541(3, argv, _p, _i, disk_info); // TODO: GESTIRE ERRORI DI LETTURA DEI FILE IMMAGINE
+            }
+            else {
+                printf("SEND FILE TO MACHINE\n");
+            }
+        }
+        fclose(fptr);
+    }
+
+    struct file_hash_entry *current_file, *tmp;
+    HASH_ITER(hh, files, current_file, tmp) {
+        HASH_DEL(files, current_file);
+        free(current_file);
+    }
+
+    return _return;
 }
