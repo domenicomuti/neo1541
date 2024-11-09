@@ -49,13 +49,6 @@
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 
-#ifdef _WIN32
-#include <windows.h>
-#define FILESEPARATOR '\\'
-#else
-#define FILESEPARATOR '/'
-#endif
-
 #define DIRENTRIESPERBLOCK     8
 #define DIRTRACK_D41_D71       18
 #define DIRTRACK_D81           40
@@ -288,7 +281,8 @@ static int unicode         = 0;      /* which unicode mapping to use: 0 = none, 
 static int modified        = 0;      /* image needs to be written */
 static int dir_error       = DIR_OK; /* directory has an error */
 
-extern char *image;
+extern char *disk_path;
+extern struct vic_disk_info disk_info;
 
 /* Prints the command line help */
 static void
@@ -2044,7 +2038,7 @@ print_filetype(int filetype, unsigned char* string_filetype)
 }
 
 static void
-print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk_info* disk_info)
+print_directory(image_type type, unsigned char* image, int blocks_free)
 {
     unsigned char* bam = image + linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
     char *blockmap = calloc(image_num_blocks(type), sizeof(char));
@@ -2053,12 +2047,12 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
         exit(-1);
     }
 
-    disk_info->header[0] = 0x12; // Reverse print on
-    disk_info->header[1] = '\"';
-    memcpy(disk_info->header + 2, bam + get_header_offset(type), 16);
-    memcpy(disk_info->header + 18, "\" ", 2);
-    memcpy(disk_info->header + 20, bam + get_id_offset(type), 5);
-    disk_info->header[22] = ' ';
+    disk_info.header[0] = 0x12; // Reverse print on
+    disk_info.header[1] = '\"';
+    memcpy(disk_info.header + 2, bam + get_header_offset(type), 16);
+    memcpy(disk_info.header + 18, "\" ", 2);
+    memcpy(disk_info.header + 20, bam + get_id_offset(type), 5);
+    disk_info.header[22] = ' ';
 
     int ds = (type == IMAGE_D81) ? 3 : 1;
     int dt = dirtrack(type);
@@ -2072,25 +2066,23 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
         if (filetype != FILETYPEDEL) {
             unsigned char* filename = (unsigned char*)image + dirblock + FILENAMEOFFSET;
 
-            disk_info->dir[i_dir].blocks = blocks;
-            int filename_length = get_dirfilename_n(filename);
-            memcpy(disk_info->dir[i_dir].filename, "\"", 1);
-            memcpy(
-                disk_info->dir[i_dir].filename + 1,
-                filename,
-                filename_length
-            );
-            memcpy(disk_info->dir[i_dir].filename + 1 + filename_length, "\"", 1);
-            for (int i=filename_length + 2; i<FILENAMEMAXSIZE+2; i++) {
-                disk_info->dir[i_dir].filename[i] = ' ';
+            vic_disk_dir *vic_dir = &disk_info.dir[i_dir];
+
+            vic_dir->blocks = blocks;
+            int filename_len = get_dirfilename_n(filename);
+            vic_dir->filename[0] = '\"';
+            memcpy(vic_dir->filename + 1, filename, filename_len);
+            vic_dir->filename[filename_len + 1] = '\"';
+            for (int i = filename_len + 2; i < FILENAMEMAXSIZE + 2; i++) {
+                vic_dir->filename[i] = ' ';
             }
-            print_filetype(filetype, disk_info->dir[i_dir].type);
+            print_filetype(filetype, vic_dir->type);
             i_dir++;
         }
     } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
-    disk_info->n_dir = i_dir;
+    disk_info.n_dir = i_dir;
     free(blockmap);
-    disk_info->blocks_free = (unsigned short)blocks_free;
+    disk_info.blocks_free = (unsigned short)blocks_free;
 
     /* detect and print bam message */
     if((type == IMAGE_D64 || type == IMAGE_D64_EXTENDED_SPEED_DOS) && bam[BAMMESSAGEOFFSET] != 0) {
@@ -2100,15 +2092,15 @@ print_directory(image_type type, unsigned char* image, int blocks_free, vic_disk
         unsigned char c;
         int i_bam = 0;
         while(b < 256 && ((c = bam[b]) != 0)) {
-            disk_info->bam_message[i_bam++] = c;
+            disk_info.bam_message[i_bam++] = c;
             b++;
         }
-        disk_info->bam_message_length = i_bam;
+        disk_info.bam_message_length = i_bam;
         //printf("\"\n");
     }
     else {
-        memcpy(disk_info->bam_message, "", 1);
-        disk_info->bam_message_length = 0;
+        memcpy(disk_info.bam_message, "", 1);
+        disk_info.bam_message_length = 0;
     }
 }
 
@@ -4629,7 +4621,7 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
 }
 
 int
-cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic_disk_info* disk_info)
+cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i)
 {
     imagefile files[MAXNUMFILES_D81];
     memset(files, 0, sizeof files);
@@ -4696,13 +4688,13 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         if (strcmp(argv[j], "-D") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -D\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             _print_directory = 1;
         } else if (strcmp(argv[j], "-n") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -n\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             header = (unsigned char*)argv[++j];
             set_header = 1;
@@ -4710,7 +4702,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-i") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -i\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             id = (unsigned char*)argv[++j];
             set_header = 1;
@@ -4718,7 +4710,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-H") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -H\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             bam_message = (unsigned char*)argv[++j];
             set_header = 1;
@@ -4726,54 +4718,54 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-M") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &max_hash_length)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -M\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if ((max_hash_length < 1) || (max_hash_length > FILENAMEMAXSIZE)) {
                 fprintf(stderr, "ERROR: Hash computation maximum filename length %d specified\n", max_hash_length);
-                return -1;
+                exit(EXIT_FAILURE);
             }
         } else if (strcmp(argv[j], "-m") == 0) {
             ignore_collision = 1;
         } else if (strcmp(argv[j], "-F") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &first_sector_new_track)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -F\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             new_track_start_sector_set = 1;
         } else if (strcmp(argv[j], "-S") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &defaultSectorInterleave)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -S\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if(defaultSectorInterleave < 1 || defaultSectorInterleave > 21) {
                 fprintf(stderr, "ERROR: Illegal value for -S\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             default_sector_interleave_set = 1;
         } else if (strcmp(argv[j], "-s") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &sectorInterleave)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -s\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if(sectorInterleave < 1 || sectorInterleave > 21) {
                 fprintf(stderr, "ERROR: Illegal value for -s\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             sector_interleave_set = 1;
         } else if (strcmp(argv[j], "-f") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -f\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             filename = (unsigned char*)argv[++j];
         } else if (strcmp(argv[j], "-A") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &allocation_strategy)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -A\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if(allocation_strategy < 0 || allocation_strategy > 1) {
                 fprintf(stderr, "ERROR: Illegal value for -A\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
         } else if (strcmp(argv[j], "-e") == 0) {
             files[num_files].mode |= MODE_SAVETOEMPTYTRACKS;
@@ -4782,21 +4774,21 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-r") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &i)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -r\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if ((i < 1) || (((i << MODE_MIN_TRACK_SHIFT) & MODE_MIN_TRACK_MASK) != (i << MODE_MIN_TRACK_SHIFT))) {
                 fprintf(stderr, "ERROR: Invalid minimum track %d specified\n",  i);
-                return -1;
+                exit(EXIT_FAILURE);
             }
             files[num_files].mode = (files[num_files].mode & ~MODE_MIN_TRACK_MASK) | (i << MODE_MIN_TRACK_SHIFT);
         } else if (strcmp(argv[j], "-b") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &i)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -b\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if ((i < 0) || (i >= num_sectors(IMAGE_D64, 1))) { /* same for all applicable images, so simply use D64 */
                 fprintf(stderr, "ERROR: Invalid beginning sector %d specified\n", i);
-                return -1;
+                exit(EXIT_FAILURE);
             }
             files[num_files].mode = (files[num_files].mode & ~MODE_BEGINNING_SECTOR_MASK) | (i + 1);
             file_start_sector_set = 1;
@@ -4810,7 +4802,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-T") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -T\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if (strcmp(argv[j + 1], "DEL") == 0) {
                 filetype = (filetype & 0xf0) | FILETYPEDEL;
@@ -4827,7 +4819,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
                 filetype = strtol(argv[j + 1], &dummy, 10);
                 if(dummy == argv[j + 1] || *dummy != 0 || filetype < 0 || filetype > 255) {
                     fprintf(stderr, "ERROR: Error parsing argument for -T\n");
-                    return -1;
+                    exit(EXIT_FAILURE);
                 }
             }
             filetype_set = true;
@@ -4842,7 +4834,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-K") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -K\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             evalhexescape((unsigned char *) argv[++j], files[num_files].key, TRANSWARPKEYSIZE, 0);
             files[num_files].have_key = true;
@@ -4850,7 +4842,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
                    || (strcmp(argv[j], "-W") == 0)) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for %s\n", argv[j]);
-                return -1;
+                exit(EXIT_FAILURE);
             }
             files[num_files].alocalname = (unsigned char*)argv[j + 1];
             if (filename == NULL) {
@@ -4867,15 +4859,15 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
             if (strcmp(argv[j], "-W") == 0) {
                 if(nrSectorsShown != -1) {
                     fprintf(stderr, "ERROR: -B cannot be used for Transwarp files\n");
-                    return -1;
+                    exit(EXIT_FAILURE);
                 }
                 if(file_start_sector_set) {
                     fprintf(stderr, "ERROR: -b cannot be used for Transwarp files\n");
-                    return -1;
+                    exit(EXIT_FAILURE);
                 }
                 if(sector_interleave_set) {
                     fprintf(stderr, "ERROR: -s cannot be used for Transwarp files\n");
-                    return -1;
+                    exit(EXIT_FAILURE);
                 }
                 transwarp_set = true;
                 if(!filetype_set && files[num_files].have_key) {
@@ -4898,18 +4890,18 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-l") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -l\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             files[num_files].alocalname = (unsigned char*)argv[j + 1];
             evalhexescape(files[num_files].alocalname, files[num_files].plocalname, FILENAMEMAXSIZE, FILENAMEEMPTYCHAR);
             if (filename == NULL) {
                 fprintf(stderr, "ERROR: Loop files require a filename set with -f\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             evalhexescape(filename, files[num_files].pfilename, FILENAMEMAXSIZE, FILENAMEEMPTYCHAR);
             if(memcmp(files[num_files].pfilename, files[num_files].plocalname, FILENAMEMAXSIZE) == 0 && !files[num_files].force_new) {
                 fprintf(stderr, "ERROR: Loop file cannot have the same name as the file they refer to, unless with -N\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             files[num_files].mode |= MODE_LOOPFILE;
             files[num_files].sectorInterleave = 0;
@@ -4929,7 +4921,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-L") == 0) {
             if (filename == NULL) {
                 fprintf(stderr, "ERROR: Writing no file using -L requires disk filename set with -f\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             evalhexescape(filename, files[num_files].pfilename, FILENAMEMAXSIZE, FILENAMEEMPTYCHAR);
             files[num_files].nrSectorsShown = nrSectorsShown;
@@ -4952,22 +4944,22 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-d") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%u", &shadowdirtrack)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -d\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             modified = 1;
         } else if (strcmp(argv[j], "-u") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &numdirblocks)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -u\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
         } else if (strcmp(argv[j], "-B") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &nrSectorsShown)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -B\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if (nrSectorsShown < 0 || nrSectorsShown > 65535) {
                 fprintf(stderr, "ERROR: Argument must be between 0 and 65535 for -B\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
         } else if (strcmp(argv[j], "-4") == 0) {
             type = IMAGE_D64_EXTENDED_SPEED_DOS;
@@ -4975,11 +4967,11 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-R") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &restore_level)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -R\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if(restore_level < 0 || restore_level > 5) {
                 fprintf(stderr, "ERROR: Argument must be between 0 and 5 for -R\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
         } else if (strcmp(argv[j], "-5") == 0) {
             type = IMAGE_D64_EXTENDED_DOLPHIN_DOS;
@@ -4987,32 +4979,32 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if(strcmp(argv[j], "-g") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -g\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             filename_g64 = argv[++j];
         } else if (strcmp(argv[j], "-U") == 0) {
             if ((argc < j + 2) || !sscanf(argv[++j], "%d", &unicode)) {
                 fprintf(stderr, "ERROR: Error parsing argument for -U\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if(unicode < 0 || unicode > 2) {
                 fprintf(stderr, "ERROR: Argument must be between 0 and 2 for -U\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
         } else if (strcmp(argv[j], "-p") == 0) {
             if(num_patches >= MAXNUMPATCHES) {
                 fprintf(stderr, "ERROR: Too many patches, maximum supported number is %d\n", MAXNUMPATCHES);
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -p\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             int numparsed;
             if((sscanf(argv[j + 1], "%d,%d,%d%n", &(patches[num_patches].track), &(patches[num_patches].sector), &(patches[num_patches].offset), &numparsed) != 3)
                     || (argv[j + 1][numparsed] != ',')) {
                 fprintf(stderr, "ERROR: Error parsing arguments for -p\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             patches[num_patches++].filename = argv[j + 1] + numparsed + 1;
             modified = 1;
@@ -5020,11 +5012,11 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else if (strcmp(argv[j], "-X") == 0) {
             if(num_extractions >= MAXNUMEXTRACTIONS) {
                 fprintf(stderr, "ERROR: Too many file extraction patterns, maximum supported number is %d\n", MAXNUMPATCHES);
-                return -1;
+                exit(EXIT_FAILURE);
             }
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -X\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             extractions[num_extractions++] = argv[j + 1];
             j++;
@@ -5037,12 +5029,12 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         } else {
             fprintf(stderr, "ERROR: Error parsing command line at \"%s\"\n", argv[j]);
             printf("Use -h for help.\n");
-            return -1;
+            exit(EXIT_FAILURE);
         }
     }
     if (j >= argc) {
         fprintf(stderr, "ERROR: No image file provided, or misparsed last option\n");
-        return -1;
+        exit(EXIT_FAILURE);
     }
     imagepath = argv[argc-1];
 
@@ -5050,13 +5042,13 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
         if (strcmp(imagepath + strlen(imagepath) - 4, ".d71") == 0) {
             if ((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) {
                 fprintf(stderr, "ERROR: Extended .d71 images are not supported\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             type = IMAGE_D71;
         } else if (strcmp(imagepath + strlen(imagepath) - 4, ".d81") == 0) {
             if ((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) {
                 fprintf(stderr, "ERROR: Extended .d81 images are not supported\n");
-                return -1;
+                exit(EXIT_FAILURE);
             }
             type = IMAGE_D81;
             dir_sector_interleave = 1;
@@ -5065,17 +5057,17 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
 
     if(type != IMAGE_D71 && cluster_optimized) {
         fprintf(stderr, "ERROR: -c switch is only supported for D71 images\n");
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     if(bam_message != NULL && type != IMAGE_D64 && type != IMAGE_D64_EXTENDED_SPEED_DOS) {
         fprintf(stderr, "ERROR: Bam message only supported for D64 and SPEED DOS images\n");
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     if(shadowdirtrack > image_num_tracks(type) || (int)shadowdirtrack == dirtrack(type) || (type == IMAGE_D71 && (int)shadowdirtrack == dirtrack(type) + D64NUMTRACKS)) {
         fprintf(stderr, "ERROR: Invalid shadow directory track\n");
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     if(!transwarp_set) {
@@ -5087,12 +5079,12 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
                 && (type != IMAGE_D64_EXTENDED_SPEED_DOS)
                 && (type != IMAGE_D64_EXTENDED_DOLPHIN_DOS)) {
             fprintf(stderr, "ERROR: Transwarp encoding is not supported for non-D64 images\n");
-            return -1;
+            exit(EXIT_FAILURE);
         }
 
         if (filename_g64 != NULL) {
             fprintf(stderr, "ERROR: G64 output is only supported for non-extended D64 images\n");
-            return -1;
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -5100,19 +5092,19 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
     if (type == IMAGE_D81) {
         if (default_sector_interleave_set) {
             fprintf(stderr, "ERROR: -S is not supported for D81 images\n");
-            return -1;
+            exit(EXIT_FAILURE);
         }
         if (sector_interleave_set) {
             fprintf(stderr, "ERROR: -s is not supported for D81 images\n");
-            return -1;
+            exit(EXIT_FAILURE);
         }
         if (new_track_start_sector_set) {
             fprintf(stderr, "ERROR: -F is not supported for D81 images\n");
-            return -1;
+            exit(EXIT_FAILURE);
         }
         if (file_start_sector_set) {
             fprintf(stderr, "ERROR: -b is not supported for D81 images\n");
-            return -1;
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -5131,7 +5123,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
     unsigned char* image = (unsigned char*)calloc(imagesize, sizeof(unsigned char));
     if (image == NULL) {
         fprintf(stderr, "ERROR: Memory allocation error\n");
-        return -1;
+        exit(EXIT_FAILURE);
     }
     FILE* f = fopen(imagepath, "rb");
     if (f == NULL) {
@@ -5159,7 +5151,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
                 }
             } else {
                 fprintf(stderr, "ERROR: Wrong filesize: expected to read %u bytes, but read %u bytes\n", imagesize, (unsigned int) read_size);
-                return -1;
+                exit(EXIT_FAILURE);
             }
         }
         if (dovalidate) {
@@ -5193,7 +5185,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
 
     /* Print directory */
     if (_print_directory) {
-        print_directory(type, image, blocks_free, disk_info);
+        print_directory(type, image, blocks_free);
     }
 
     /* Show directory issues if present */
@@ -5231,26 +5223,22 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i, vic
 }
 
 void extract_prg_from_image(char* prg_name, unsigned char* prg, int* prg_size) {
-    char* argv[] = {"", "-X", prg_name, image};
-    vic_disk_info *disk_info;
-    cc1541(4, argv, prg, prg_size, disk_info);
+    char* argv[] = {"", "-X", prg_name, disk_path};
+    cc1541(4, argv, prg, prg_size);
 }
 
 unsigned short get_file_blocks(char *path, char *filename) {
-    char *_path = (char *)calloc(strlen(path) + strlen(filename) + 2, sizeof(char));
+    char *_path = calloc(strlen(path) + strlen(filename) + 2, sizeof(char));
+    if (_path == NULL) {
+        printf("ERROR: Memory allocation error\n");
+        exit(EXIT_FAILURE);
+    }
     strcpy(_path, path);
     int offset = 0;
-    #ifdef __linux__
-        if (_path[strlen(path) - 1] != '/') {
-            _path[strlen(path)] = '/';
-            offset = 1;
-        }
-    #elif _WIN64
-        if (_path[strlen(path) - 1] != '\\') {
-            _path[strlen(path)] = '\\';
-            offset = 1;
-        }
-    #endif
+    if (_path[strlen(path) - 1] != FILESEPARATOR) {
+        _path[strlen(path)] = FILESEPARATOR;
+        offset = 1;
+    }
     strcpy(_path + strlen(path) + offset, filename);
 
     #ifdef __linux__
@@ -5266,22 +5254,16 @@ unsigned short get_file_blocks(char *path, char *filename) {
             blocks = ceil(_telli64(fh) / 256.0);
             _close(fh);
         }
+    #elif _WIN32
+        // TODO
     #endif
 
     free(_path);
-
-    //printf("%s ", _path);
-
     if (blocks > 999) blocks = 999;
-
-    //printf("%d\n", blocks);
-
     return (unsigned short)blocks;
 }
 
-int get_disk_info(vic_disk_info* disk_info) {
-    int _return = 1;
-
+void get_disk_info() {
     struct file_hash_entry {
         char filename[FILENAMEMAXSIZE + 1];
         int n;
@@ -5291,77 +5273,57 @@ int get_disk_info(vic_disk_info* disk_info) {
 
     DIR *dir;
     struct dirent *entry;
-    dir = opendir(image);
+    
+    dir = opendir(disk_path);
     if (dir) {
-        memset(disk_info->header, ' ', HEADER_SIZE);
-        disk_info->header[0] = 0x12;
-        disk_info->header[1] = '\"';
-        int image_len = strlen(image);
-        
-        int i_delimitator = image_len;
-
-        #ifdef __linux__
-            if (image_len == 1 && image[0] == '/') i_delimitator = -1;
-        #elif _WIN64
-            if (image_len == 3 && image[1] == ':') i_delimitator = -1;
-        #endif
-
-        for (i_delimitator; i_delimitator>=0; i_delimitator--) {
-            #ifdef __linux__
-                char delimitator = '/';
-            #elif _WIN64
-                char delimitator = '\\';
-            #endif
-
-            if (image[i_delimitator] == delimitator) break;
+        {
+            // Header
+            memset(disk_info.header, ' ', HEADER_SIZE);
+            disk_info.header[0] = 0x12; // Reverse print
+            disk_info.header[1] = '\"';
+            char *_header = disk_info.header + 2;
+            char *_basename = (char *)basename(disk_path);
+            int _basename_len = strlen(_basename);
+            if (_basename_len > (HEADER_SIZE - 9)) _basename_len = HEADER_SIZE - 9;
+            memcpy(_header, _basename, _basename_len);
+            strtolower(_header, _basename_len);
+            for (int i = 0; i < _basename_len; i++) _header[i] = a2p(_header[i]);
+            memcpy(disk_info.header + HEADER_SIZE - 7, (unsigned char *)"\" ID 00", 7);
         }
 
-        image_len -= i_delimitator + 1;
-        char *_image = (char *)calloc(image_len + 1, sizeof(char));
-        strcpy(_image, image + i_delimitator + 1);
-
-        strtolower(_image);
-        for (int i = 0; i < strlen(_image); i++) {
-            _image[i] = a2p(_image[i]);
-        }
-        memcpy(
-            disk_info->header + 2,
-            _image,
-            image_len > (HEADER_SIZE - 9) ? (HEADER_SIZE - 9) : image_len
-        );
-        memcpy(disk_info->header + HEADER_SIZE - 7, (unsigned char *)"\" ID 00", 7);
-        free(_image);
-
-        disk_info->n_dir = 0;
-        disk_info->blocks_free = 0;
+        disk_info.n_dir = 0;
+        disk_info.blocks_free = 0;
 
         while ((entry = readdir(dir)) != NULL) {
             if (strcmp(entry->d_name, ".") == 0) continue;
 
-            memset(disk_info->dir[disk_info->n_dir].filename, ' ', FILENAMEMAXSIZE + 2);
-            disk_info->dir[disk_info->n_dir].filename[0] = '\"';
+            vic_disk_dir *vic_dir = &disk_info.dir[disk_info.n_dir];
 
-            char *d_name = (char *)malloc((strlen(entry->d_name) + 1) * sizeof(char));
-            strcpy(d_name, entry->d_name);
-            strtolower(d_name);
-            for (int i=0; i<strlen(d_name); i++) {
-                d_name[i] = a2p(d_name[i]);
-            }
+            memset(vic_dir->filename, ' ', FILENAMEMAXSIZE + 2);
+            vic_dir->filename[0] = '\"';
+
+            char *_filename = vic_dir->filename + 1;
 
             if (entry->d_namlen <= FILENAMEMAXSIZE) {
-                memcpy(disk_info->dir[disk_info->n_dir].filename + 1, d_name, entry->d_namlen);
-                disk_info->dir[disk_info->n_dir].filename[entry->d_namlen + 1] = '\"';
+                memcpy(_filename, entry->d_name, entry->d_namlen);
+                strtolower(_filename, entry->d_namlen);
+                for (int i = 0; i < entry->d_namlen; i++) _filename[i] = a2p(_filename[i]);
+                _filename[entry->d_namlen] = '\"';
             }
             else {
                 char filename[FILENAMEMAXSIZE + 1];
-                strncpy(filename, d_name, FILENAMEMAXSIZE);
+                strncpy(filename, entry->d_name, FILENAMEMAXSIZE);
                 filename[FILENAMEMAXSIZE] = '\0';
 
                 struct file_hash_entry *f;
                 
                 HASH_FIND_STR(files, filename, f);
                 if (f == NULL) {
-                    f = (struct file_hash_entry *)malloc(sizeof *f);
+                    f = malloc(sizeof *f);
+                    if (f == NULL) {
+                        printf("ERROR: Memory allocation error\n");
+                        exit(EXIT_FAILURE);
+                    }
                     strcpy(f->filename, filename);
                     f->n = 1;
                     HASH_ADD_STR(files, filename, f);
@@ -5370,45 +5332,45 @@ int get_disk_info(vic_disk_info* disk_info) {
                     f->n++;
                 }
                 
-                char _t1[4];
-                sprintf(_t1, "%X", f->n);
-                char *_t2 = (char *)calloc(FILENAMEMAXSIZE + 1, sizeof(char));
-                strncpy(_t2, filename, FILENAMEMAXSIZE - strlen(_t1) - 1);
-                _t2[FILENAMEMAXSIZE - strlen(_t1) - 1] = '#';
-                strncpy(_t2 + FILENAMEMAXSIZE - strlen(_t1), _t1, strlen(_t1));
-                strcpy(filename, _t2);
-                free(_t2);
-
-                memcpy(disk_info->dir[disk_info->n_dir].filename + 1, filename, FILENAMEMAXSIZE);
-                disk_info->dir[disk_info->n_dir].filename[FILENAMEMAXSIZE + 1] = '\"';
+                char _t[4];
+                sprintf(_t, "%X", f->n);
+                int _t_len = strlen(_t);
+                memcpy(_filename, entry->d_name, FILENAMEMAXSIZE - _t_len - 1);
+                strtolower(_filename, -3);
+                for (int i = 0; i < FILENAMEMAXSIZE - _t_len - 1; i++) _filename[i] = a2p(_filename[i]);
+                _filename[FILENAMEMAXSIZE - _t_len - 1] = '#';
+                memcpy(_filename + FILENAMEMAXSIZE - _t_len, _t, _t_len);
+                _filename[FILENAMEMAXSIZE] = '\"';
             }
-            free(d_name);
 
-            memcpy(disk_info->dir[disk_info->n_dir].type, (unsigned char *)" PRG ", 5);
-            disk_info->dir[disk_info->n_dir].blocks = get_file_blocks(image, entry->d_name);
-            disk_info->n_dir++;
+            memcpy(vic_dir->type, (unsigned char *)" PRG ", 5);
+            vic_dir->blocks = get_file_blocks(disk_path, entry->d_name);
+            disk_info.n_dir++;
         }
         closedir(dir);
     }
     else {
-        FILE *fptr = fopen(image, "rb");
+        FILE *fptr = fopen(disk_path, "rb");
         if (fptr == NULL) {
-            _return = 0;
-            printf("FILE NOT EXISTS\n"); // TODO: gestire con errno -> https://man7.org/linux/man-pages/man2/open.2.html
+            if (errno == ENOENT)
+                printf("ERROR: file %s not exists\n", disk_path);
+            else if (errno == EACCES)
+                printf("ERROR: access to file %s not allowed\n", disk_path);
+            else
+                printf("ERROR: can't open file %s (errno: %d)\n", errno, disk_path);
+
+            exit(EXIT_FAILURE);
         }
         else {
             char ext[4] = {0};
-            substr(ext, image, -3, 3);
-            strtolower(ext);
+            substr(ext, disk_path, -3, 3);
+            strtolower(ext, 0);
 
-            if (strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) {
-                char *argv[] = {"", "-D", image};
+            if (strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) { // TODO: test d71 and d81 images
+                char *argv[] = {"", "-D", disk_path};
                 unsigned char *_p;
                 int *_i;
-                cc1541(3, argv, _p, _i, disk_info); // TODO: GESTIRE ERRORI DI LETTURA DEI FILE IMMAGINE
-            }
-            else {
-                printf("SEND FILE TO MACHINE\n");
+                cc1541(3, argv, _p, _i);
             }
         }
         fclose(fptr);
@@ -5419,6 +5381,4 @@ int get_disk_info(vic_disk_info* disk_info) {
         HASH_DEL(files, current_file);
         free(current_file);
     }
-
-    return _return;
 }

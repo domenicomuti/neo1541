@@ -20,46 +20,61 @@ extern int _resetted_message_displayed;
 
 extern int addr;
 
-char *image;
+char *disk_path;
+struct vic_disk_info disk_info;
 
-#ifdef _WIN64
+#ifdef _WIN32
     extern LARGE_INTEGER lpFrequency;
 #endif
 
 int main(int argc, char *argv[]) {
-    char *_image;
-    for (int i = 1; i < argc - 1; i++) {
-        if (strcmp(argv[i], "--image") == 0) {
-            _image = argv[i+1]; // TODO: CONTROL STRING IS PRESENT
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--disk") == 0) {
+            if (argc < i + 2) {
+                fprintf(stderr, "ERROR: Error parsing argument for --disk\n");
+                exit(EXIT_FAILURE);
+            }
+            disk_path = argv[i + 1];
         }
     }
 
-    //_image = "C:\\Users\\noely\\Downloads\\test.d64\\omega.d642";
-    _image = "C:\\Users\\noely\\Projects\\neo1541\\image_examples\\omega.d64";
-    image = (char *)calloc(strlen(_image) + 1, sizeof(char));
-    trim(image, _image);
+    /*disk_path = calloc(12, sizeof(char));
+    strcpy(disk_path, "     C:    ");*/
 
-    int image_len = strlen(image);
+    int trimmed = trim(disk_path);
+    int disk_path_len = strlen(disk_path);
+
     #ifdef __linux__
-        int remove_final_slash = (image_len > 1) && (image[image_len - 1] == '/');
+        int remove_final_slash = (disk_path_len > 1) && (disk_path[disk_path_len - 1] == FILESEPARATOR);
         int add_final_slash = 0;
-    #elif _WIN64
-        int remove_final_slash = (image_len > 3) && (image[image_len - 1] == '\\');
-        int add_final_slash = (image_len == 2) && (image[image_len - 1] == ':');
+    #elif _WIN32
+        int remove_final_slash = (disk_path_len > 3) && (disk_path[disk_path_len - 1] == FILESEPARATOR);
+        int add_final_slash = (disk_path_len == 2) && (disk_path[disk_path_len - 1] == ':');
     #endif
     if (remove_final_slash) {
-        image[image_len - 1] = '\0';       
+        disk_path[disk_path_len - 1] = '\0';
     }
     else if (add_final_slash) {
-        char *_new_image = (char *)calloc(image_len + 2, sizeof(char));
-        strcpy(_new_image, image);
-        _new_image[image_len] = '\\';
-        free(image);
-        image = _new_image;
+        if (!trimmed) {
+            char *new_disk_path = calloc(disk_path_len + 2, sizeof(char));
+            if (new_disk_path == NULL) {
+                printf("ERROR: Memory allocation error\n");
+                exit(EXIT_FAILURE);
+            }
+            strcpy(new_disk_path, disk_path);
+            new_disk_path[disk_path_len] = FILESEPARATOR;
+            free(disk_path);
+            disk_path = new_disk_path;
+        }
+        else {
+            disk_path[disk_path_len] = FILESEPARATOR;
+            disk_path[disk_path_len + 1] = '\0';
+        }
     }
 
-    /*struct vic_disk_info disk_info;
-    get_disk_info(image, &disk_info);*/
+    printf("%s\n", disk_path);
+
+    get_disk_info();
 
     
 
@@ -67,7 +82,7 @@ int main(int argc, char *argv[]) {
 
     printf("OK\n");
 
-    #ifdef _WIN64
+    #ifdef _WIN32
         //system("pause");
     #endif
 
@@ -108,7 +123,7 @@ int main(int argc, char *argv[]) {
     sched_setscheduler(0, SCHED_FIFO, &_sched_param);
 
     probe_microsleep_offset();
-#elif _WIN64
+#elif _WIN32
     QueryPerformanceFrequency(&lpFrequency);
 #endif
     /*for (int i = 0; i < 20; i++) {
@@ -147,8 +162,6 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-
-    free(image);
 
     return 0;
 }

@@ -1,21 +1,31 @@
 #include "string_functions.h"
 
-void trim(char *dest, char *src) {
+int trim(char *string) {
+    int orig_string_len = strlen(string);
+
     int i_start = 0;
-    char c = src[i_start];
+    char c = string[i_start];
     while (c == ' ') {
         i_start++;
-        c = src[i_start];
+        c = string[i_start];
     }
 
-    int i_end = strlen(src) - 1;
-    c = src[i_end];
-    while (c == ' ') {
-        i_end--;
-        c = src[i_end];
+    int new_string_len = orig_string_len - i_start;
+    if (i_start > 0) {
+        int j = 0;
+        for(int i = i_start; i <= orig_string_len; i++) string[j++] = string[i];
     }
 
-    memcpy(dest, src + i_start, i_end - i_start + 1);
+    int i_end = new_string_len - 1;
+    c = string[i_end];
+    while (c == ' ') c = string[--i_end];
+
+    if (i_end != (new_string_len - 1)) {
+        new_string_len = i_end + 1;
+        string[new_string_len] = '\0';
+    }
+
+    return orig_string_len - new_string_len;
 }
 
 void substr(char *dest, char *src, int start, int length) {
@@ -25,14 +35,20 @@ void substr(char *dest, char *src, int start, int length) {
         memcpy(dest, src + strlen(src) + start, length);
 }
 
-void strtolower(char *string) {
-    for (int i = 0; i < strlen(string); i++) {
+void strtolower(char *string, int length) {
+    if (length == 0) length = strlen(string);
+    else if (length < 0) length = strlen(string) + length;
+
+    for (int i = 0; i < length; i++) {
         string[i] = tolower(string[i]);
     }
 }
 
-void strtoupper(char *string) {
-    for (int i = 0; i < strlen(string); i++) {
+void strtoupper(char *string, int length) {
+    if (length == 0) length = strlen(string);
+    else if (length < 0) length = strlen(string) + length;
+
+    for (int i = 0; i < length; i++) {
         string[i] = toupper(string[i]);
     }
 }

@@ -4,9 +4,9 @@
 #include <string.h>
 #include <ctype.h>
 
-void trim(char *dest, char *src);
+int trim(char *string);
 void substr(char *dest, char *src, int start, int length);
-void strtolower(char *string);
-void strtoupper(char *string);
+void strtolower(char *string, int length);
+void strtoupper(char *string, int length);
 
 #endif

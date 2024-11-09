@@ -18,7 +18,8 @@ int i_data_buffer = 0;
 vic_byte filename[100];
 int i_filename = 0;
 
-extern char *image;
+extern char *disk_path;
+extern struct vic_disk_info disk_info;
 
 #ifdef _WIN64
     extern LARGE_INTEGER lpFrequency;
@@ -203,17 +204,8 @@ void read_bytes() {
 }
 
 void read_directory() {
-    struct vic_disk_info disk_info;
-    if (!get_disk_info(&disk_info)) {
-        return;
-    }
-
-
-
-    i_data_buffer = 0;
-    for (int i = 0; i < MAX_DATA_BUFFER_SIZE; i++) {
-        data_buffer[i] = 0;
-    }
+    int i_data_buffer = 0;
+    for (int i = 0; i < MAX_DATA_BUFFER_SIZE; i++) data_buffer[i] = 0;
 
     int i_memory = 0x1001;
     int i_memory_start = i_memory - 2;
@@ -297,13 +289,13 @@ void send_bytes() {
     set_data(0);
     set_clock(1);
 
-    /*FILE* fptr = fopen(image, "rb");
+    /*FILE* fptr = fopen(disk_path, "rb");
     fseek(fptr, 0, SEEK_END);
     int file_size = ftell(fptr);
     fseek(fptr, 0, SEEK_SET);*/
     
-    if (vic_string_equal(filename, (vic_byte*)"$", i_filename, 1))
-        read_directory();
+    //if (vic_string_equal(filename, (vic_byte*)"$", i_filename, 1))
+    //    read_directory();
 
     /*vic_byte prg_buffer[16384];
     int file_size = 0;
