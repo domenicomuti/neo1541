@@ -5230,7 +5230,7 @@ void extract_prg_from_image(char* prg_name, unsigned char* prg, int* prg_size) {
 unsigned short get_file_blocks(char *path, char *filename) {
     char *_path = calloc(strlen(path) + strlen(filename) + 2, sizeof(char));
     if (_path == NULL) {
-        printf("ERROR: Memory allocation error\n");
+        fprintf(stderr, "ERROR: Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     strcpy(_path, path);
@@ -5321,7 +5321,7 @@ void get_disk_info() {
                 if (f == NULL) {
                     f = malloc(sizeof *f);
                     if (f == NULL) {
-                        printf("ERROR: Memory allocation error\n");
+                        fprintf(stderr, "ERROR: Memory allocation error\n");
                         exit(EXIT_FAILURE);
                     }
                     strcpy(f->filename, filename);
@@ -5353,11 +5353,11 @@ void get_disk_info() {
         FILE *fptr = fopen(disk_path, "rb");
         if (fptr == NULL) {
             if (errno == ENOENT)
-                printf("ERROR: file %s not exists\n", disk_path);
+                fprintf(stderr, "ERROR: file %s not exists\n", disk_path);
             else if (errno == EACCES)
-                printf("ERROR: access to file %s not allowed\n", disk_path);
+                fprintf(stderr, "ERROR: access to file %s not allowed\n", disk_path);
             else
-                printf("ERROR: can't open file %s (errno: %d)\n", errno, disk_path);
+                fprintf(stderr, "ERROR: can't open file %s (errno: %d)\n", disk_path, errno);
 
             exit(EXIT_FAILURE);
         }

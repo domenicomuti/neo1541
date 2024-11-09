@@ -58,12 +58,11 @@ int main(int argc, char *argv[]) {
         if (!trimmed) {
             char *new_disk_path = calloc(disk_path_len + 2, sizeof(char));
             if (new_disk_path == NULL) {
-                printf("ERROR: Memory allocation error\n");
+                fprintf(stderr, "ERROR: Memory allocation error\n");
                 exit(EXIT_FAILURE);
             }
             strcpy(new_disk_path, disk_path);
             new_disk_path[disk_path_len] = FILESEPARATOR;
-            free(disk_path);
             disk_path = new_disk_path;
         }
         else {
@@ -71,8 +70,6 @@ int main(int argc, char *argv[]) {
             disk_path[disk_path_len + 1] = '\0';
         }
     }
-
-    printf("%s\n", disk_path);
 
     get_disk_info();
 
