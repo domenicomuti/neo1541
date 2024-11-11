@@ -25,7 +25,7 @@ void probe_microsleep_offset() {
 #endif
 
 void microsleep(int duration) {
-    #ifdef __linux__
+#ifdef __linux__
     struct timespec _ts;
     clock_gettime(CLOCK_BOOTTIME, &_ts);
 
@@ -34,6 +34,6 @@ void microsleep(int duration) {
     ts.tv_nsec = _ts.tv_nsec + (1000 * duration) - microsleep_offset;
 
     clock_nanosleep(CLOCK_BOOTTIME, TIMER_ABSTIME, &ts, NULL);
-    #endif
+#endif
 }
 

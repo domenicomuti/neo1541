@@ -2,12 +2,12 @@
 #define VIC_IO_H
 
 #ifdef __linux__
-    #include <sys/io.h>
-    #define INB(port) inb(port)
-    #define OUTB(value, port) outb(value, port)
+#include <sys/io.h>
+#define INB(port) inb(port)
+#define OUTB(value, port) outb(value, port)
 #elif _WIN32
-    #define INB(port) printf("INB(%d)", port)
-    #define OUTB(value, port) printf("OUTB(%d, %d)", value, port)
+#define INB(port) printf("INB(%d)", port)
+#define OUTB(value, port) printf("OUTB(%d, %d)", value, port)
 #endif
 
 #include <stdio.h>

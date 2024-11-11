@@ -16,11 +16,11 @@ void free_buffers();
 void reset_device();
 vic_byte get_byte();
 void handle_atn();
-void read_bytes();
+void receive_bytes();
 void directory_listing();
 void load_file();
 void send_bytes();
 
-void print_command_name(vic_byte command);
+void print_command(vic_byte command);
 
 #endif

@@ -2,22 +2,23 @@
 
 extern int addr;
 
-vic_byte last_command;
+vic_byte command;
+vic_byte channel;
 
 int device_resetted = 1;
 int device_attentioned = 0;
 int device_listening = 0;
 int device_talking = 0;
-int open_mode;
 
-extern char disk_path[PATH_MAX + 1];
-extern struct vic_disk_info disk_info;
+extern char disk_path[PATH_MAX];
+extern vic_disk_info disk_info;
 
 vic_string data_buffer;
 vic_string filename;
+char _filename_ascii[NAME_MAX + 1];
 
 #ifdef _WIN64
-    extern LARGE_INTEGER lpFrequency;
+extern LARGE_INTEGER lpFrequency;
 #endif
 
 void initialize_buffers() {
@@ -50,48 +51,50 @@ void reset_device() {
 vic_byte get_byte() {
     vic_byte byte = 0;
 
-    //printf("START BYTE TRANSMISSION\n");
-
-    //suseconds_t a = get_microsec();
+    //suseconds_t a;
 
     // bit 1
     wait_clock(0);
-    byte = (INB(addr+1) & 0x40) >> 6;
+    //a = get_microsec();
+    byte = (INB(addr + 1) & 0x40) >> 6;
     wait_clock(1);
+    //printf("Data valid %ld\n", get_microsec() - a);
 
+    //a = get_microsec();
     // bit 2
     wait_clock(0);
-    byte |= (INB(addr+1) & 0x40) >> 5;
+    //printf("Bit setup %ld\n", get_microsec() - a);
+    byte |= (INB(addr + 1) & 0x40) >> 5;
     wait_clock(1);
 
     // bit 3
     wait_clock(0);
-    byte |= (INB(addr+1) & 0x40) >> 4;
+    byte |= (INB(addr + 1) & 0x40) >> 4;
     wait_clock(1);
 
     // bit 4
     wait_clock(0);
-    byte |= (INB(addr+1) & 0x40) >> 3;
+    byte |= (INB(addr + 1) & 0x40) >> 3;
     wait_clock(1);
 
     // bit 5
     wait_clock(0);
-    byte |= (INB(addr+1) & 0x40) >> 2;
+    byte |= (INB(addr + 1) & 0x40) >> 2;
     wait_clock(1);
     
     // bit 6
     wait_clock(0);
-    byte |= (INB(addr+1) & 0x40) >> 1;
+    byte |= (INB(addr + 1) & 0x40) >> 1;
     wait_clock(1);
 
     // bit 7
     wait_clock(0);
-    byte |= (INB(addr+1) & 0x40);
+    byte |= (INB(addr + 1) & 0x40);
     wait_clock(1);
 
     // bit 8
     wait_clock(0);
-    byte |= (INB(addr+1) & 0x40) << 1;
+    byte |= (INB(addr + 1) & 0x40) << 1;
     wait_clock(1);
 
     //printf("%ld\n", get_microsec() - a);
@@ -102,45 +105,44 @@ vic_byte get_byte() {
 }
 
 void handle_atn() {
-    printf("%sATN ON\n%s", COLOR_CYAN, COLOR_RESET);
+    printf("%sATN ON%s -> ", COLOR_CYAN, COLOR_RESET);
             
     set_data(1);
     wait_clock(1);
 
     do {
-        wait_clock(0); // TALKER IS READY TO SEND
-        set_data(0);   // LISTENER IS READY FOR DATA
+        wait_clock(0); // Talker is ready to send
+        set_data(0);   // Listener is ready for data
 
         wait_clock(1);
-        vic_byte command = get_byte();
-        last_command = command;
+        command = get_byte();
 
-        print_command_name(command);
+        print_command(command);
 
         //printf("BYTE: %c - %X\n", command, command);
 
         if ((command & 0xF0) == LISTEN) {
-            device_attentioned = device_listening = (command & 0x0F) == DEVICE;
+            device_attentioned = device_listening = ((command & 0x0F) == DEVICE);
             device_talking = 0;
         }
         else if((command & 0xF0) == UNLISTEN) {
             device_listening = 0;
         }
         else if ((command & 0xF0) == OPEN) {
-            open_mode = command & 0x0F;
+            channel = command & 0x0F;
         }
         else if ((command & 0xF0) == TALK) {
             device_listening = 0;
-            device_attentioned = device_talking = (command & 0x0F) == DEVICE;
+            device_attentioned = device_talking = ((command & 0x0F) == DEVICE);
         }
         else if ((command & 0xF0) == UNTALK) {
             device_talking = 0;
         }
-        else if ((command & 0xF0) == OPEN_CHANNEL) {
-            //
+        else if ((command & 0xF0) == SECOND) {
+            channel = command & 0x0F;
         }
         else if ((command & 0xF0) == CLOSE) {
-            //
+            // TODO
         }
         else {
             device_attentioned = device_listening = device_talking = 0;
@@ -154,28 +156,22 @@ void handle_atn() {
         set_data(1); // Frame Handshake
         wait_clock(0);
 
-        if ((command & 0xF0) == UNLISTEN) {
+        if (((command & 0xF0) == UNLISTEN) || ((command & 0xF0) == UNTALK))
             device_attentioned = 0;
-        }
-        else if ((command & 0xF0) == UNTALK) {
-            device_attentioned = 0;
-        }
     }
     while (atn(1) && !device_resetted);
 
-    printf("%sATN OFF\n%s", COLOR_CYAN, COLOR_RESET);
+    printf("%sATN OFF%s\n", COLOR_CYAN, COLOR_RESET);
 }
 
-void read_bytes() {
-    printf("%sGET DATA ON\n%s", COLOR_MAGENTA, COLOR_RESET);
-
+void receive_bytes() {
     data_buffer.length = 0;
 
+    int _eoi = 0;
     do {
-        wait_clock(0); // TALKER IS READY TO SEND
-        set_data(0);   // LISTENER IS READY FOR DATA
-
-        int _eoi = 0;
+        wait_clock(0); // Talker is ready to send
+        set_data(0);   // Listener is ready for data
+        
         if (eoi()) {
             set_data(1);
             microsleep(60);
@@ -185,38 +181,77 @@ void read_bytes() {
 
         wait_clock(1);
         data_buffer.string[data_buffer.length] = get_byte();
-        printf("%s%c - 0x%X\n%s", COLOR_YELLOW, data_buffer.string[data_buffer.length], data_buffer.string[data_buffer.length], COLOR_RESET);
-
         data_buffer.length++;
 
         set_data(1); // Frame Handshake
 
         microsleep(100);
-
-        if (_eoi) break;
     }
-    while (1);
-
-    /*FILE *fptr = fopen("/home/noelyoung/list.prg", "a");
-    fwrite(data_buffer, data_buffer.length, 1, fptr);
-    fclose(fptr);*/
-
-    if ((last_command & 0xF0) == OPEN) {
+    while (!_eoi);
+    
+    if ((command & 0xF0) == OPEN) {
         for (int i = 0; i < data_buffer.length; i++) {
             filename.string[i] = data_buffer.string[i];
+            _filename_ascii[i] = p2a(data_buffer.string[i]);
         }
         filename.length = data_buffer.length;
+        _filename_ascii[filename.length] = '\0';
         data_buffer.length = 0;
+
+        printf("%s%s: %s\"%s\"\n", COLOR_YELLOW, (channel <= 1 ? "FILENAME" : "COMMAND"), COLOR_RESET, _filename_ascii);
+
+        /*  I added the goto statement to manage a strange behaviour from the VIC20 (don't know if is the same for the C64)
+            
+            OPEN 15,8,15,"UI-":CLOSE 15   <--- with this command the machine sends OPEN
+            
+            OPEN 15,8,15
+            PRINT# 15,"UI-"   <--- with this command the machine sends SECOND
+            CLOSE 15
+        */
+        if (channel == 15)
+            goto dos_command;
+    }
+    else if ((command & 0xF0) == SECOND) {
+        if (channel == 1) {
+            // Save
+
+            if (disk_info.type == DISK_DIR) {
+                char _filepath[PATH_MAX];
+                int _filepath_len = strlen(disk_path);
+                memcpy(_filepath, disk_path, _filepath_len);
+                _filepath[_filepath_len] = FILESEPARATOR;
+                strcpy(_filepath + _filepath_len + 1, _filename_ascii);
+
+                FILE* fptr = fopen(_filepath, "wb");
+                if (fptr == NULL) {
+                    fprintf(stderr, "%sERROR: can't open file %s (errno %d)%s\n", COLOR_RED, _filepath, errno, COLOR_RESET);
+                    // TODO: gestire il caso in cui si va a scrivere una directory (errno 21)
+                }
+
+                if (fwrite(data_buffer.string, data_buffer.length, 1, fptr) == 0)
+                    fprintf(stderr, "%sERROR: can't write file (errno %d)%s\n", COLOR_RED, errno, COLOR_RESET);
+
+                printf("%sSAVING FILE: %s%s\n", COLOR_YELLOW, COLOR_RESET, _filepath);
+                fclose(fptr);
+            }
+            else if (disk_info.type == DISK_IMAGE) {
+                // TODO
+            }
+        }
+        else if (channel >= 2 && channel <= 14) {
+            // TODO
+        }
+        else if (channel == 15) {
+            dos_command:
+            // TODO
+        }
     }
 
     device_listening = 0;
-
-    printf("%sGET DATA OFF\n%s", COLOR_MAGENTA, COLOR_RESET);
 }
 
 void directory_listing() {
     data_buffer.length = filename.length = 0;
-    //for (int i = 0; i < MAX_DATA_BUFFER_SIZE; i++) data_buffer.string[i] = 0;
 
     int i_memory = 0x1001;
     int i_memory_start = i_memory - 2;
@@ -300,7 +335,7 @@ void load_file() {
     get_disk_info();
 
     if (vic_string_equal_string(&filename, "$")) {
-        printf("List files: %s\n", disk_path);
+        printf("%sLIST FILES: %s%s\n", COLOR_YELLOW, COLOR_RESET, disk_path);
         directory_listing();
     }
     else if (vic_string_equal_string(&filename, "..")) {
@@ -315,7 +350,6 @@ void load_file() {
             t[1] = '\0';
         }
 
-        printf("Go to parent directory\n");
         filename.string[0] = '$';
         filename.length = 1;
         load_file();
@@ -324,17 +358,18 @@ void load_file() {
         char _filename[NAME_MAX + 1];
         for (int i = 0; i < filename.length; i++) _filename[i] = p2a(filename.string[i]);
         _filename[filename.length] = '\0';
-        printf("Sending file: %s -> %s\n", disk_path, _filename);
-        extract_prg_from_image(_filename, &data_buffer);
+        printf("%sSENDING FILE: %s%s -> %s\n", COLOR_YELLOW, COLOR_RESET, disk_path, _filename);
+        extract_file_from_image();
         if (data_buffer.length == 0)
             return;
     }
     else if (disk_info.type == DISK_DIR) {
-        char _disk_path[PATH_MAX + 1];
+        char _disk_path[PATH_MAX];
         strcpy(_disk_path, disk_path);
 
         int _disk_path_len = strlen(_disk_path);
-        _disk_path[_disk_path_len++] = FILESEPARATOR;
+        if (_disk_path_len > 1)
+            _disk_path[_disk_path_len++] = FILESEPARATOR;
 
         vic_disk_dir *dir_entry = NULL;
         for (int i = 0; i < disk_info.n_dir; i++) {
@@ -371,15 +406,13 @@ void load_file() {
                 return;
             data_buffer.length = dir_entry->filesize;
             fread(data_buffer.string, data_buffer.length, 1, fptr);
-            printf("Sending file: %s (%ld bytes)\n", _disk_path, data_buffer.length);
+            printf("%sSENDING FILE: %s%s (%ld bytes)\n", COLOR_YELLOW, COLOR_RESET, _disk_path, data_buffer.length);
             fclose(fptr);
         }
     }
 }
 
 void send_bytes() {
-    printf("SENDING DATA\n");
-
     set_data(0);
     set_clock(1);
 
@@ -388,7 +421,6 @@ void send_bytes() {
         fprintf(stderr, "%sERROR: can't send file %s\n", COLOR_RED, COLOR_RESET);
         microsleep(100);
         set_clock(0);
-        //set_data(0);
         device_talking = filename.length = 0;
         return;
     }
@@ -413,8 +445,8 @@ void send_bytes() {
             return;
         }
         
-        set_clock(0); // DEVICE IS READY TO SEND
-        wait_data(0, 0); // COMPUTER IS READY FOR DATA
+        set_clock(0);       // Device is ready to send
+        wait_data(0, 0);    // Computer is ready for data
 
         int eoi = 0;
         
@@ -431,56 +463,54 @@ void send_bytes() {
             microsleep(30);
         }
 
-        #ifdef __linux__
-            suseconds_t a;
-            for (int i = 0; i < 8; i++) {
-                a = get_microsec();
-                set_clock(1);
-                set_data((~c >> i) & 1);
-                while ((get_microsec() - a) < 60) {}
-                //microsleep(60 - (get_microsec() - a));
+    #ifdef __linux__
+        suseconds_t a;
+        for (int i = 0; i < 8; i++) {
+            set_clock(1);
+            a = get_microsec();
+            set_data((~c >> i) & 1);
+            while ((get_microsec() - a) < 60) {} // Bit setup
 
-                a = get_microsec();
-                set_clock(0);
-                while ((get_microsec() - a) < 60) {}
-                //microsleep(60 - (get_microsec() - a));
-                set_data(0);
-            }
-        #elif _WIN64
-            LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
-            for (int i = 0; i < 8; i++) {
-                QueryPerformanceCounter(&StartingTime);
-                set_clock(1);
-                set_data((~c >> i) & 1);
-                QueryPerformanceCounter(&EndingTime);
-                ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
-                ElapsedMicroseconds.QuadPart *= 1000000;
-                ElapsedMicroseconds.QuadPart /= lpFrequency.QuadPart;
-                while (ElapsedMicroseconds.QuadPart < 60) {}
+            set_clock(0);
+            a = get_microsec();
+            while ((get_microsec() - a) < 20) {} // Data valid (20 for the VIC20, 60 for the Commodore 64)
+            set_data(0);
+        }
+    #elif _WIN64
+        LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
+        for (int i = 0; i < 8; i++) {
+            QueryPerformanceCounter(&StartingTime);
+            set_clock(1);
+            set_data((~c >> i) & 1);
+            QueryPerformanceCounter(&EndingTime);
+            ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
+            ElapsedMicroseconds.QuadPart *= 1000000;
+            ElapsedMicroseconds.QuadPart /= lpFrequency.QuadPart;
+            while (ElapsedMicroseconds.QuadPart < 60) {}
 
-                QueryPerformanceCounter(&StartingTime);
-                set_clock(0);
-                QueryPerformanceCounter(&EndingTime);
-                ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
-                ElapsedMicroseconds.QuadPart *= 1000000;
-                ElapsedMicroseconds.QuadPart /= lpFrequency.QuadPart;
-                while (ElapsedMicroseconds.QuadPart < 60) {}
-                set_data(0);
-            }
-        #endif
+            QueryPerformanceCounter(&StartingTime);
+            set_clock(0);
+            QueryPerformanceCounter(&EndingTime);
+            ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
+            ElapsedMicroseconds.QuadPart *= 1000000;
+            ElapsedMicroseconds.QuadPart /= lpFrequency.QuadPart;
+            while (ElapsedMicroseconds.QuadPart < 60) {}
+            set_data(0);
+        }
+    #endif
 
         set_clock(1);
 
         if (!wait_data(1, 1000)) {
             retry++;
             i_file--;
-            //fseek(fptr, i_file, SEEK_SET);
+            printf("E");
             microsleep(100);
             continue;
         }
         retry = 0;
 
-        microsleep(100); // BETWEEN BYTES TIME
+        microsleep(100); // Between bytes time
 
         if (eoi) break;
     }
@@ -492,35 +522,31 @@ void send_bytes() {
     device_talking = 0;
 }
 
-void print_command_name(vic_byte command) {
+void print_command(vic_byte command) {
     switch (command & 0xF0) {
         case LISTEN:
-            printf("LISTEN ");
+            printf("LISTEN %d -> ", command & 0x0F);
             break;
         case UNLISTEN:
-            printf("UNLISTEN ");
+            printf("UNLISTEN -> ");
             break;
         case TALK:
-            printf("TALK ");
+            printf("TALK %d -> ", command & 0x0F);
             break;
         case UNTALK:
-            printf("UNTALK ");
+            printf("UNTALK -> ");
             break;
-        case OPEN_CHANNEL:
-            printf("OPEN_CHANNEL ");
+        case SECOND:
+            printf("SECOND %d -> ", command & 0x0F);
             break;
         case CLOSE:
-            printf("CLOSE ");
+            printf("CLOSE %d -> ", command & 0x0F);
             break;
         case OPEN:
-            printf("OPEN ");
+            printf("OPEN %d -> ", command & 0x0F);
             break;
         default:
-            printf("UNKNOWN COMMAND: %X\n", command);
+            printf("UNKNOWN COMMAND: %X -> ", command);
             return;
     }
-
-    vic_byte secondary = command & 0x0F;
-    if (secondary != 0x0F) printf("%X", secondary);
-    printf("\n");
 }

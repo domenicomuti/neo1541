@@ -24,11 +24,11 @@ extern int _resetted_message_displayed;
 
 extern int addr;
 
-char disk_path[PATH_MAX + 1];
+char disk_path[PATH_MAX];
 struct vic_disk_info disk_info;
 
 #ifdef _WIN32
-    extern LARGE_INTEGER lpFrequency;
+extern LARGE_INTEGER lpFrequency;
 #endif
 
 int main(int argc, char *argv[]) {
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
         if (errno == ENOENT)
             fprintf(stderr, "ERROR: file or directory %s doesn't exists\n", _disk_path);
         else if (errno == EACCES)
-            fprintf(stderr, "ERROR: access to file or directory %s doesn't allowed\n", _disk_path);
+            fprintf(stderr, "ERROR: access to file or directory %s is not allowed\n", _disk_path);
         else
             fprintf(stderr, "ERROR: can't open file or directory %s (errno %d)\n", _disk_path, errno);
         exit(EXIT_FAILURE);
@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
     // TODO: VERIFICARE SE SU WIN FUNZIONA REALPATH (rimuove automaticamente final slash)
 
     while (1) {
-        OUTB(0xC0, addr+2); // Reset PCR
+        OUTB(0xC0, addr + 2); // Reset PCR
 
         while (resetted()) microsleep(1000);
 
@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
         printf("%sDEVICE RESET OK%s\n", COLOR_GREEN, COLOR_RESET);
         
         wait_atn(0);
-        printf("WAITING ATN\n");
+        printf("%sDEVICE STARTED%s\n", COLOR_CYAN, COLOR_RESET);
 
         while (1) {
             if (!device_attentioned)
@@ -110,7 +110,7 @@ int main(int argc, char *argv[]) {
             if (atn(1))
                 handle_atn();
             else if (device_listening)
-                read_bytes();
+                receive_bytes();
             else if (device_talking)
                 send_bytes();
 
@@ -122,6 +122,9 @@ int main(int argc, char *argv[]) {
     }
 
     free_buffers();
+
+    // TODO: catch ctrl + c
+    printf("BYE");
 
     exit(EXIT_SUCCESS);
 }

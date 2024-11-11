@@ -1,0 +1,32 @@
+load 
+ATN ON -> LISTEN 8 -> OPEN 0 -> ATN OFF
+FILENAME: "$"
+ATN ON -> UNLISTEN -> ATN OFF
+ATN ON -> TALK 8 -> SECOND 0 -> ATN OFF
+LIST FILES: /home/noelyoung/Projects/neo1541/image_examples
+ATN ON -> UNTALK -> ATN OFF
+ATN ON -> LISTEN 8 -> CLOSE 0 -> UNLISTEN -> ATN OFF
+
+
+save
+ATN ON -> LISTEN 8 -> OPEN 1 -> ATN OFF
+FILENAME: "ciao4"
+ATN ON -> UNLISTEN -> ATN OFF
+ATN ON -> LISTEN 8 -> SECOND 1 -> ATN OFF
+SAVING FILE: /home/noelyoung/Projects/neo1541/image_examples/ciao4
+ATN ON -> UNLISTEN -> ATN OFF
+ATN ON -> LISTEN 8 -> CLOSE 1 -> UNLISTEN -> ATN OFF
+
+
+command #1
+ATN ON -> LISTEN 8 -> OPEN 15 -> ATN OFF
+FILENAME: "ui-"
+ATN ON -> UNLISTEN -> ATN OFF
+ATN ON -> LISTEN 8 -> CLOSE 15 -> UNLISTEN -> ATN OFF
+
+
+command #2
+ATN ON -> LISTEN 8 -> SECOND 15 -> ATN OFF
+FILENAME: "ui-"
+ATN ON -> UNLISTEN -> ATN OFF
+ATN ON -> LISTEN 8 -> CLOSE 15 -> UNLISTEN -> ATN OFF
