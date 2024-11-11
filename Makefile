@@ -1,5 +1,5 @@
 build:
-	gcc -Wall ./*.c -o neo1541
+	gcc -Wall ./*.c -lm -o neo1541
 
 clean:
 	rm neo1541

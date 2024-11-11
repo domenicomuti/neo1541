@@ -15,8 +15,6 @@
 #include "timing.h"
 #include "display.h"
 
-typedef unsigned char vic_byte;
-
 int resetted();
 int atn(int value);
 void wait_atn(int value);

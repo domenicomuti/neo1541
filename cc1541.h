@@ -1,27 +1,25 @@
 #ifndef CC1541_H
 #define CC1541_H
 
+#include "constants.h"
+#include "string_functions.h"
+
 #ifdef _WIN32
     #include <windows.h>
-    #define FILESEPARATOR '\\'
-#else
-    #define FILESEPARATOR '/'
 #endif
 
-#define BAMMESSAGEOFFSET  0xab
-#define BAMMESSAGEMAXSIZE 0x100-BAMMESSAGEOFFSET
-#define FILENAMEMAXSIZE   16
-#define HEADER_SIZE       25
-#define MAX_DIRS          144
-
 typedef struct vic_disk_dir {
+    vic_size filesize;
     unsigned short blocks;
     unsigned char filename[FILENAMEMAXSIZE + 2];
+    int filename_length;
+    char filename_local[NAME_MAX + 1];
     unsigned char type[5];
 } vic_disk_dir;
 
 typedef struct vic_disk_info {
-    unsigned char header[HEADER_SIZE]; // header 16 chars + id 5 chars + other chars
+    int type;
+    unsigned char header[HEADER_SIZE];
     vic_disk_dir dir[MAX_DIRS];
     int n_dir;
     unsigned short blocks_free;
@@ -29,7 +27,8 @@ typedef struct vic_disk_info {
     int bam_message_length;
 } vic_disk_info;
 
-void extract_prg_from_image(char *prg_name, unsigned char *prg, int *prg_size);
+unsigned char p2a(unsigned char p);
+void extract_prg_from_image(char *filename, vic_string *data_buffer);
 void get_disk_info();
 
 #endif

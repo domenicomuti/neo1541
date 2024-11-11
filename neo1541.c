@@ -1,14 +1,18 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
-#include <sched.h>
+#include <dirent.h>
 
+#ifdef __linux__
+#include <sched.h>
+#endif
+
+#include "constants.h"
 #include "timing.h"
 #include "display.h"
 #include "vic_io.h"
 #include "device.h"
-
-#include "cc1541.h"
 #include "string_functions.h"
 
 extern int device_resetted;
@@ -20,7 +24,7 @@ extern int _resetted_message_displayed;
 
 extern int addr;
 
-char *disk_path;
+char disk_path[PATH_MAX + 1];
 struct vic_disk_info disk_info;
 
 #ifdef _WIN32
@@ -28,91 +32,13 @@ struct vic_disk_info disk_info;
 #endif
 
 int main(int argc, char *argv[]) {
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--disk") == 0) {
-            if (argc < i + 2) {
-                fprintf(stderr, "ERROR: Error parsing argument for --disk\n");
-                exit(EXIT_FAILURE);
-            }
-            disk_path = argv[i + 1];
-        }
-    }
 
-    /*disk_path = calloc(12, sizeof(char));
-    strcpy(disk_path, "     C:    ");*/
-
-    int trimmed = trim(disk_path);
-    int disk_path_len = strlen(disk_path);
-
-    #ifdef __linux__
-        int remove_final_slash = (disk_path_len > 1) && (disk_path[disk_path_len - 1] == FILESEPARATOR);
-        int add_final_slash = 0;
-    #elif _WIN32
-        int remove_final_slash = (disk_path_len > 3) && (disk_path[disk_path_len - 1] == FILESEPARATOR);
-        int add_final_slash = (disk_path_len == 2) && (disk_path[disk_path_len - 1] == ':');
-    #endif
-    if (remove_final_slash) {
-        disk_path[disk_path_len - 1] = '\0';
-    }
-    else if (add_final_slash) {
-        if (!trimmed) {
-            char *new_disk_path = calloc(disk_path_len + 2, sizeof(char));
-            if (new_disk_path == NULL) {
-                fprintf(stderr, "ERROR: Memory allocation error\n");
-                exit(EXIT_FAILURE);
-            }
-            strcpy(new_disk_path, disk_path);
-            new_disk_path[disk_path_len] = FILESEPARATOR;
-            disk_path = new_disk_path;
-        }
-        else {
-            disk_path[disk_path_len] = FILESEPARATOR;
-            disk_path[disk_path_len + 1] = '\0';
-        }
-    }
-
-    get_disk_info();
-
-    
-
-    read_directory();
-
-    printf("OK\n");
-
-    #ifdef _WIN32
-        //system("pause");
-    #endif
-
-    return 0;
-
-    /*printf("TEST\n");
-
-    vic_byte prg_buffer[16338];
-    int prg_buffer_i = 0;
-    argv[0] = "";
-    argv[1] = "-X";
-    argv[2] = "omega race";
-    argv[3] = "/home/noelyoung/omega.d64";
-    
-    cc1541(4, argv, prg_buffer, &prg_buffer_i);
-
-    FILE* fptr = fopen("/home/noelyoung/omega_race_neo", "w");
-
-    for (int i = 0; i < prg_buffer_i; i++) {
-        //printf("%X ", prg_buffer[i]);
-        putc(prg_buffer[i], fptr);
-    }
-
-    fclose(fptr);
-    printf("%d\n", prg_buffer_i);
-
-    return 0;*/
 #ifdef __linux__
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
-            printf("NO ROOT\n");
+            fprintf(stderr, "ERROR: You must be root\n");
+            exit(EXIT_FAILURE);
         }
-        return 0;
     }
 
     struct sched_param _sched_param;
@@ -121,21 +47,56 @@ int main(int argc, char *argv[]) {
 
     probe_microsleep_offset();
 #elif _WIN32
+    // TODO: CHECK ADMINISTRATOR MODE ?
     QueryPerformanceFrequency(&lpFrequency);
 #endif
-    /*for (int i = 0; i < 20; i++) {
-        suseconds_t a = get_microsec();
-        microsleep(60);
-        printf("%ld\n", get_microsec() - a);
+
+    char *_disk_path;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--disk") == 0) {
+            if (argc < i + 2) {
+                fprintf(stderr, "ERROR: Error parsing argument for --disk\n");
+                exit(EXIT_FAILURE);
+            }
+            _disk_path = argv[i + 1];
+        }
     }
-    return 0;*/
+
+    /*_disk_path = calloc(35, sizeof(char));
+    strcpy(_disk_path, "image_examples");*/
+
+    trim(_disk_path);
+    if (realpath(_disk_path, disk_path) == NULL) {
+        if (errno == ENOENT)
+            fprintf(stderr, "ERROR: file or directory %s doesn't exists\n", _disk_path);
+        else if (errno == EACCES)
+            fprintf(stderr, "ERROR: access to file or directory %s doesn't allowed\n", _disk_path);
+        else
+            fprintf(stderr, "ERROR: can't open file or directory %s (errno %d)\n", _disk_path, errno);
+        exit(EXIT_FAILURE);
+    }
+    DIR *dir;
+    dir = opendir(disk_path);
+    if (!dir) {
+        char ext[4] = {0};
+        substr(ext, disk_path, -3, 3);
+        strtolower(ext, 0);
+        if (strcmp(ext, "d64") != 0 && strcmp(ext, "d71") != 0 && strcmp(ext, "d81") != 0) {
+            char *t = strrchr(disk_path, FILESEPARATOR);
+            t[0] = '\0';
+        }
+    }
+
+    initialize_buffers();
+
+    // TODO: VERIFICARE SE SU WIN FUNZIONA REALPATH (rimuove automaticamente final slash)
 
     while (1) {
         OUTB(0xC0, addr+2); // Reset PCR
 
-        while (resetted()) {
-            microsleep(1000);
-        }
+        while (resetted()) microsleep(1000);
+
         device_resetted = _resetted_message_displayed = 0;
         printf("%sDEVICE RESET OK%s\n", COLOR_GREEN, COLOR_RESET);
         
@@ -160,5 +121,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    return 0;
+    free_buffers();
+
+    exit(EXIT_SUCCESS);
 }

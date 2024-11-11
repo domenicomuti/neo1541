@@ -52,3 +52,23 @@ void strtoupper(char *string, int length) {
         string[i] = toupper(string[i]);
     }
 }
+
+int vic_string_equal_string(vic_string *string1, char *string2) {
+    int n1 = string1->length;
+    int n2 = strlen(string2);
+    if (n1 != n2) return 0;
+    for (int i = 0; i < n1; i++) {
+        if (string1->string[i] != string2[i])
+            return 0;
+    }
+    return 1;
+}
+
+int vic_string_equal_vic_string(vic_string *string1, vic_string *string2) {
+    if (string1->length != string2->length) return 0;
+    for (int i = 0; i < string1->length; i++) {
+        if (string1->string[i] != string2->string[i])
+            return 0;
+    }
+    return 1;
+}

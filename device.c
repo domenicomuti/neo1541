@@ -10,28 +10,37 @@ int device_listening = 0;
 int device_talking = 0;
 int open_mode;
 
-#define MAX_DATA_BUFFER_SIZE 168656
-
-vic_byte data_buffer[MAX_DATA_BUFFER_SIZE];
-int i_data_buffer = 0;
-
-vic_byte filename[100];
-int i_filename = 0;
-
-extern char *disk_path;
+extern char disk_path[PATH_MAX + 1];
 extern struct vic_disk_info disk_info;
+
+vic_string data_buffer;
+vic_string filename;
 
 #ifdef _WIN64
     extern LARGE_INTEGER lpFrequency;
 #endif
 
-int vic_string_equal(vic_byte* string1, vic_byte* string2, int n1, int n2) {
-    if (n1 != n2) return 0;
-    for (int i = 0; i < n1; i++) {
-        if (string1[n1] != string2[n1])
-            return 0;
+void initialize_buffers() {
+    vic_byte *_data_buffer = malloc(MAX_DATA_BUFFER_SIZE * sizeof(vic_byte));
+    if (_data_buffer == NULL) {
+        fprintf(stderr, "ERROR: Memory allocation error\n");
+        exit(EXIT_FAILURE);
     }
-    return 1;
+    data_buffer.string = _data_buffer;
+    data_buffer.length = 0;
+
+    vic_byte *_filename = malloc(FILENAMEMAXSIZE * sizeof(vic_byte));
+    if (_filename == NULL) {
+        fprintf(stderr, "ERROR: Memory allocation error\n");
+        exit(EXIT_FAILURE);
+    }
+    filename.string = _filename;
+    filename.length = 0;
+}
+
+void free_buffers() {
+    free(data_buffer.string);
+    free(filename.string);
 }
 
 void reset_device() {
@@ -160,6 +169,8 @@ void handle_atn() {
 void read_bytes() {
     printf("%sGET DATA ON\n%s", COLOR_MAGENTA, COLOR_RESET);
 
+    data_buffer.length = 0;
+
     do {
         wait_clock(0); // TALKER IS READY TO SEND
         set_data(0);   // LISTENER IS READY FOR DATA
@@ -173,10 +184,10 @@ void read_bytes() {
         }
 
         wait_clock(1);
-        data_buffer[i_data_buffer] = get_byte();
-        printf("%s%c - 0x%X\n%s", COLOR_YELLOW, data_buffer[i_data_buffer], data_buffer[i_data_buffer], COLOR_RESET);
+        data_buffer.string[data_buffer.length] = get_byte();
+        printf("%s%c - 0x%X\n%s", COLOR_YELLOW, data_buffer.string[data_buffer.length], data_buffer.string[data_buffer.length], COLOR_RESET);
 
-        i_data_buffer++;
+        data_buffer.length++;
 
         set_data(1); // Frame Handshake
 
@@ -187,15 +198,15 @@ void read_bytes() {
     while (1);
 
     /*FILE *fptr = fopen("/home/noelyoung/list.prg", "a");
-    fwrite(data_buffer, i_data_buffer, 1, fptr);
+    fwrite(data_buffer, data_buffer.length, 1, fptr);
     fclose(fptr);*/
 
     if ((last_command & 0xF0) == OPEN) {
-        for (int i = 0; i < i_data_buffer; i++) {
-            filename[i] = data_buffer[i];
+        for (int i = 0; i < data_buffer.length; i++) {
+            filename.string[i] = data_buffer.string[i];
         }
-        i_filename = i_data_buffer;
-        i_data_buffer = 0;
+        filename.length = data_buffer.length;
+        data_buffer.length = 0;
     }
 
     device_listening = 0;
@@ -203,84 +214,167 @@ void read_bytes() {
     printf("%sGET DATA OFF\n%s", COLOR_MAGENTA, COLOR_RESET);
 }
 
-void read_directory() {
-    int i_data_buffer = 0;
-    for (int i = 0; i < MAX_DATA_BUFFER_SIZE; i++) data_buffer[i] = 0;
+void directory_listing() {
+    data_buffer.length = filename.length = 0;
+    //for (int i = 0; i < MAX_DATA_BUFFER_SIZE; i++) data_buffer.string[i] = 0;
 
     int i_memory = 0x1001;
     int i_memory_start = i_memory - 2;
     int i_next_line;
 
-    data_buffer[i_data_buffer++] = i_memory & 0x00FF; // Start
-    data_buffer[i_data_buffer++] = (i_memory & 0xFF00) >> 8;
-    i_next_line = i_data_buffer;
+    data_buffer.string[data_buffer.length++] = i_memory & 0x00FF; // Start
+    data_buffer.string[data_buffer.length++] = (i_memory & 0xFF00) >> 8;
+    i_next_line = data_buffer.length;
     
-    data_buffer[4] = 0x00; // Line number 0
-    data_buffer[5] = 0x00;
-    i_data_buffer += 4;
+    data_buffer.string[4] = 0x00; // Line number 0
+    data_buffer.string[5] = 0x00;
+    data_buffer.length += 4;
 
-    memcpy(data_buffer + i_data_buffer, disk_info.header, HEADER_SIZE);
-    i_data_buffer += HEADER_SIZE;
+    memcpy(data_buffer.string + data_buffer.length, disk_info.header, HEADER_SIZE);
+    data_buffer.length += HEADER_SIZE;
 
-    data_buffer[i_data_buffer] = 0x00; // new line
-    i_data_buffer++;
+    data_buffer.string[data_buffer.length] = 0x00; // new line
+    data_buffer.length++;
     
-    i_memory = i_memory_start + i_data_buffer;
-    data_buffer[i_next_line] = i_memory & 0x00FF;
-    data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
+    i_memory = i_memory_start + data_buffer.length;
+    data_buffer.string[i_next_line] = i_memory & 0x00FF;
+    data_buffer.string[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
 
     for (int i = 0; i < disk_info.n_dir; i++) {
-        i_next_line = i_data_buffer;
+        i_next_line = data_buffer.length;
         
-        i_data_buffer += 2;
-        data_buffer[i_data_buffer++] = disk_info.dir[i].blocks & 0x00FF;
-        data_buffer[i_data_buffer++] = (disk_info.dir[i].blocks & 0xFF00) >> 8;
+        data_buffer.length += 2;
+        data_buffer.string[data_buffer.length++] = disk_info.dir[i].blocks & 0x00FF;
+        data_buffer.string[data_buffer.length++] = (disk_info.dir[i].blocks & 0xFF00) >> 8;
 
         int start_offset;
         if (disk_info.dir[i].blocks < 10) start_offset = 3;
         else if (disk_info.dir[i].blocks < 100) start_offset = 2;
         else if (disk_info.dir[i].blocks < 1000) start_offset = 1;
         for (int j = 0; j < start_offset; j++) {
-            data_buffer[j + i_data_buffer] = ' ';
+            data_buffer.string[j + data_buffer.length] = ' ';
         }
-        i_data_buffer += start_offset;
+        data_buffer.length += start_offset;
 
-        memcpy(data_buffer + i_data_buffer, disk_info.dir[i].filename, FILENAMEMAXSIZE + 2);
-        i_data_buffer += FILENAMEMAXSIZE + 2;
+        memcpy(data_buffer.string + data_buffer.length, disk_info.dir[i].filename, FILENAMEMAXSIZE + 2);
+        data_buffer.length += FILENAMEMAXSIZE + 2;
 
-        memcpy(data_buffer + i_data_buffer, disk_info.dir[i].type, 5);
-        i_data_buffer += 5;
+        memcpy(data_buffer.string + data_buffer.length, disk_info.dir[i].type, 5);
+        data_buffer.length += 5;
 
-        data_buffer[i_data_buffer] = 0x00; // new line
-        i_data_buffer++;
+        data_buffer.string[data_buffer.length] = 0x00; // new line
+        data_buffer.length++;
 
-        i_memory = i_memory_start + i_data_buffer;
-        data_buffer[i_next_line] = i_memory & 0x00FF;
-        data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
+        i_memory = i_memory_start + data_buffer.length;
+        data_buffer.string[i_next_line] = i_memory & 0x00FF;
+        data_buffer.string[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
     }
 
-    i_next_line = i_data_buffer;
+    i_next_line = data_buffer.length;
 
-    i_data_buffer += 2;
-    data_buffer[i_data_buffer++] = disk_info.blocks_free & 0x00FF; // Blocks free
-    data_buffer[i_data_buffer++] = (disk_info.blocks_free & 0xFF00) >> 8;
+    data_buffer.length += 2;
+    data_buffer.string[data_buffer.length++] = disk_info.blocks_free & 0x00FF; // Blocks free
+    data_buffer.string[data_buffer.length++] = (disk_info.blocks_free & 0xFF00) >> 8;
 
-    memcpy(data_buffer + i_data_buffer, (unsigned char*)"BLOCKS FREE.              ", 26);
-    i_data_buffer += 26;
-    data_buffer[i_data_buffer++] = 0;
+    memcpy(data_buffer.string + data_buffer.length, (unsigned char*)"BLOCKS FREE.              ", 26);
+    data_buffer.length += 26;
+    data_buffer.string[data_buffer.length++] = 0;
 
-    i_memory = i_memory_start + i_data_buffer;
-    data_buffer[i_next_line] = i_memory & 0x00FF;
-    data_buffer[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
+    i_memory = i_memory_start + data_buffer.length;
+    data_buffer.string[i_next_line] = i_memory & 0x00FF;
+    data_buffer.string[i_next_line + 1] = (i_memory & 0xFF00) >> 8;
 
-    data_buffer[i_data_buffer++] = 0;
-    data_buffer[i_data_buffer++] = 0;
+    data_buffer.string[data_buffer.length++] = 0;
+    data_buffer.string[data_buffer.length++] = 0;
 
     // TODO: BAM MESSAGE
 
-    FILE* fptr = fopen("image_examples/test_dir.prg", "wb");
-    fwrite(data_buffer, i_data_buffer, 1, fptr);
-    fclose(fptr);
+    /*FILE* fptr = fopen("image_examples/test_dir.prg", "wb");
+    fwrite(data_buffer, data_buffer.length, 1, fptr);
+    fclose(fptr);*/
+}
+
+void load_file() {
+    data_buffer.length = 0;
+
+    get_disk_info();
+
+    if (vic_string_equal_string(&filename, "$")) {
+        printf("List files: %s\n", disk_path);
+        directory_listing();
+    }
+    else if (vic_string_equal_string(&filename, "..")) {
+        char *t = strrchr(disk_path, FILESEPARATOR);
+        
+        if (t != &disk_path[0]) {
+            t[0] = '\0';
+        }
+        else {
+            // TODO: WIN32 VERSION
+            t[0] = FILESEPARATOR;
+            t[1] = '\0';
+        }
+
+        printf("Go to parent directory\n");
+        filename.string[0] = '$';
+        filename.length = 1;
+        load_file();
+    }
+    else if (disk_info.type == DISK_IMAGE) {
+        char _filename[NAME_MAX + 1];
+        for (int i = 0; i < filename.length; i++) _filename[i] = p2a(filename.string[i]);
+        _filename[filename.length] = '\0';
+        printf("Sending file: %s -> %s\n", disk_path, _filename);
+        extract_prg_from_image(_filename, &data_buffer);
+        if (data_buffer.length == 0)
+            return;
+    }
+    else if (disk_info.type == DISK_DIR) {
+        char _disk_path[PATH_MAX + 1];
+        strcpy(_disk_path, disk_path);
+
+        int _disk_path_len = strlen(_disk_path);
+        _disk_path[_disk_path_len++] = FILESEPARATOR;
+
+        vic_disk_dir *dir_entry = NULL;
+        for (int i = 0; i < disk_info.n_dir; i++) {
+            vic_string _filename = {
+                .string = disk_info.dir[i].filename + 1,
+                .length = disk_info.dir[i].filename_length
+            };
+            if (vic_string_equal_vic_string(&filename, &_filename)) {
+                dir_entry = &disk_info.dir[i];
+                break;
+            }
+        }
+        if (dir_entry == NULL)
+            return;
+        
+        strcpy(_disk_path + _disk_path_len, dir_entry->filename_local);
+        _disk_path[_disk_path_len + filename.length] = '\0';
+
+        DIR *dir;
+        dir = opendir(_disk_path);
+        char ext[4] = {0};
+        substr(ext, _disk_path, -3, 3);
+        strtolower(ext, 0);
+
+        if (dir || strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) {
+            strcpy(disk_path, _disk_path);
+            filename.string[0] = '$';
+            filename.length = 1;
+            load_file();
+        }
+        else {
+            FILE *fptr = fopen(_disk_path, "rb");
+            if (fptr == NULL)
+                return;
+            data_buffer.length = dir_entry->filesize;
+            fread(data_buffer.string, data_buffer.length, 1, fptr);
+            printf("Sending file: %s (%ld bytes)\n", _disk_path, data_buffer.length);
+            fclose(fptr);
+        }
+    }
 }
 
 void send_bytes() {
@@ -289,17 +383,15 @@ void send_bytes() {
     set_data(0);
     set_clock(1);
 
-    /*FILE* fptr = fopen(disk_path, "rb");
-    fseek(fptr, 0, SEEK_END);
-    int file_size = ftell(fptr);
-    fseek(fptr, 0, SEEK_SET);*/
-    
-    //if (vic_string_equal(filename, (vic_byte*)"$", i_filename, 1))
-    //    read_directory();
-
-    /*vic_byte prg_buffer[16384];
-    int file_size = 0;
-    extract_prg_from_image("/home/noelyoung/omega.d64", "omega race", prg_buffer, &file_size);*/
+    load_file();
+    if (data_buffer.length == 0) {
+        fprintf(stderr, "%sERROR: can't send file %s\n", COLOR_RED, COLOR_RESET);
+        microsleep(100);
+        set_clock(0);
+        //set_data(0);
+        device_talking = filename.length = 0;
+        return;
+    }
 
     vic_byte c;
 
@@ -326,13 +418,12 @@ void send_bytes() {
 
         int eoi = 0;
         
-        //c = getc(fptr);
-        c = data_buffer[i_file];
+        c = data_buffer.string[i_file];
         i_file++;
 
-        set_progress_bar(i_file * 100 / i_data_buffer);
+        set_progress_bar(i_file * 100 / data_buffer.length);
 
-        if (i_file == i_data_buffer) {
+        if (i_file == data_buffer.length) {
             eoi = 1;
             microsleep(200);
             wait_data(1, 0);
@@ -397,8 +488,6 @@ void send_bytes() {
 
     set_clock(0);
     set_data(0);
-
-    //fclose(fptr);
 
     device_talking = 0;
 }

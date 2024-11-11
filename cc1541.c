@@ -40,7 +40,6 @@
 #include <errno.h>
 #include "uthash.h"
 #include "cc1541.h"
-#include "string_functions.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -281,7 +280,7 @@ static int unicode         = 0;      /* which unicode mapping to use: 0 = none, 
 static int modified        = 0;      /* image needs to be written */
 static int dir_error       = DIR_OK; /* directory has an error */
 
-extern char *disk_path;
+extern char disk_path[PATH_MAX + 1];
 extern struct vic_disk_info disk_info;
 
 /* Prints the command line help */
@@ -523,7 +522,7 @@ a2p(unsigned char a)
 }
 
 /* Converts a PETSCII character to ASCII */
-static unsigned char
+unsigned char
 p2a(unsigned char p)
 {
     switch (p) {
@@ -2054,10 +2053,19 @@ print_directory(image_type type, unsigned char* image, int blocks_free)
     memcpy(disk_info.header + 20, bam + get_id_offset(type), 5);
     disk_info.header[22] = ' ';
 
+    int i_dir = 0;
+
+    vic_disk_dir *vic_dir = &disk_info.dir[i_dir++];
+    vic_dir->blocks = 0;
+    memcpy(vic_dir->filename, (unsigned char *)"\"..\"              ", FILENAMEMAXSIZE + 2);
+    vic_dir->filename_length = FILENAMEMAXSIZE;
+    vic_dir->filesize = 0;
+    memcpy(vic_dir->type, (unsigned char *)" PRG ", 5);
+
     int ds = (type == IMAGE_D81) ? 3 : 1;
     int dt = dirtrack(type);
     int offset = 0;
-    int i_dir = 0;
+    
     do {
         int dirblock = linear_sector(type, dt, ds) * BLOCKSIZE + offset;
         int filetype = image[dirblock + FILETYPEOFFSET];
@@ -2066,7 +2074,7 @@ print_directory(image_type type, unsigned char* image, int blocks_free)
         if (filetype != FILETYPEDEL) {
             unsigned char* filename = (unsigned char*)image + dirblock + FILENAMEOFFSET;
 
-            vic_disk_dir *vic_dir = &disk_info.dir[i_dir];
+            vic_dir = &disk_info.dir[i_dir++];
 
             vic_dir->blocks = blocks;
             int filename_len = get_dirfilename_n(filename);
@@ -2077,7 +2085,6 @@ print_directory(image_type type, unsigned char* image, int blocks_free)
                 vic_dir->filename[i] = ' ';
             }
             print_filetype(filetype, vic_dir->type);
-            i_dir++;
         }
     } while (next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
     disk_info.n_dir = i_dir;
@@ -4553,7 +4560,7 @@ apply_patches(image_type type, unsigned char* image, patch patches[], int num_pa
 
 /* Extract files according to patterns */
 static void
-extract_files(image_type type, unsigned char* image, char *patterns[], int num_patterns, unsigned char* out_buffer, int* out_buffer_i)
+extract_files(image_type type, unsigned char* image, char *patterns[], int num_patterns, vic_string *data_buffer)
 {
     bool found = false;
     char *blockmap = calloc(image_num_blocks(type), sizeof(char));
@@ -4600,14 +4607,14 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
                         }
                         while(track != last_track || sector != last_sector) {
                             unsigned char *block = image + linear_sector(type, track, sector) * BLOCKSIZE;
-                            memcpy(&out_buffer[*out_buffer_i], block + 2, 254);
-                            *out_buffer_i += 254;
+                            memcpy(data_buffer->string + data_buffer->length, block + 2, 254);
+                            data_buffer->length += 254;
                             track = *block;
                             sector = *(block + 1);
                         }
                         unsigned char *block = image + linear_sector(type, track, sector) * BLOCKSIZE;
-                        memcpy(&out_buffer[*out_buffer_i], block + 2, *(block + 1) - 1);
-                        *out_buffer_i += *(block + 1) - 1;
+                        memcpy(data_buffer->string + data_buffer->length, block + 2, *(block + 1) - 1);
+                        data_buffer->length += *(block + 1) - 1;
                     }
                     break;
                 }
@@ -4621,7 +4628,7 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
 }
 
 int
-cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i)
+cc1541(int argc, char* argv[], vic_string *data_buffer)
 {
     imagefile files[MAXNUMFILES_D81];
     memset(files, 0, sizeof files);
@@ -5166,7 +5173,7 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i)
     }
 
     /* Extract files */
-    extract_files(type, image, extractions, num_extractions, out_buffer, out_buffer_i);
+    extract_files(type, image, extractions, num_extractions, data_buffer);
 
     /* Apply patches */
     apply_patches(type, image, patches, num_patches);
@@ -5222,12 +5229,13 @@ cc1541(int argc, char* argv[], unsigned char* out_buffer, int* out_buffer_i)
     return retval;
 }
 
-void extract_prg_from_image(char* prg_name, unsigned char* prg, int* prg_size) {
-    char* argv[] = {"", "-X", prg_name, disk_path};
-    cc1541(4, argv, prg, prg_size);
+void extract_prg_from_image(char *filename, vic_string *data_buffer) {
+    data_buffer->length = 0;
+    char* _argv[] = {"", "-X", filename, disk_path};
+    cc1541(4, _argv, data_buffer);
 }
 
-unsigned short get_file_blocks(char *path, char *filename) {
+unsigned short get_file_blocks(char *path, char *filename, vic_size *filesize) {
     char *_path = calloc(strlen(path) + strlen(filename) + 2, sizeof(char));
     if (_path == NULL) {
         fprintf(stderr, "ERROR: Memory allocation error\n");
@@ -5242,7 +5250,19 @@ unsigned short get_file_blocks(char *path, char *filename) {
     strcpy(_path + strlen(path) + offset, filename);
 
     #ifdef __linux__
-        // TODO
+        unsigned long long blocks;
+        FILE* fptr = fopen(_path, "rb");
+        if (fptr == NULL) {
+            blocks = 0;
+            *filesize = 0;
+        }
+        else {
+            fseek(fptr, 0L, SEEK_END);
+            *filesize = ftell(fptr);
+            if (*filesize == LONG_MAX) *filesize = 0;
+            blocks = ceil(*filesize / 256.0);
+            fclose(fptr);
+        }
     #elif _WIN64
         unsigned long long blocks;
         int fh = _open(_path, _O_BINARY | _O_RDONLY);
@@ -5264,25 +5284,21 @@ unsigned short get_file_blocks(char *path, char *filename) {
 }
 
 void get_disk_info() {
-    struct file_hash_entry {
-        char filename[FILENAMEMAXSIZE + 1];
-        int n;
-        UT_hash_handle hh;
-    };
-    struct file_hash_entry *files = NULL;
-
     DIR *dir;
     struct dirent *entry;
     
     dir = opendir(disk_path);
     if (dir) {
+        disk_info.type = DISK_DIR;
+        disk_info.blocks_free = 0;
+
         {
             // Header
             memset(disk_info.header, ' ', HEADER_SIZE);
             disk_info.header[0] = 0x12; // Reverse print
             disk_info.header[1] = '\"';
-            char *_header = disk_info.header + 2;
-            char *_basename = (char *)basename(disk_path);
+            char *_header = (char *)(disk_info.header + 2);
+            char *_basename = (char *)basename((unsigned char *)disk_path);
             int _basename_len = strlen(_basename);
             if (_basename_len > (HEADER_SIZE - 9)) _basename_len = HEADER_SIZE - 9;
             memcpy(_header, _basename, _basename_len);
@@ -5291,26 +5307,36 @@ void get_disk_info() {
             memcpy(disk_info.header + HEADER_SIZE - 7, (unsigned char *)"\" ID 00", 7);
         }
 
-        disk_info.n_dir = 0;
-        disk_info.blocks_free = 0;
+        struct file_hash_entry {
+            char filename[FILENAMEMAXSIZE + 1];
+            int n;
+            UT_hash_handle hh;
+        };
+        struct file_hash_entry *files = NULL;
 
+        disk_info.n_dir = 0;
         while ((entry = readdir(dir)) != NULL) {
             if (strcmp(entry->d_name, ".") == 0) continue;
 
             vic_disk_dir *vic_dir = &disk_info.dir[disk_info.n_dir];
+            strcpy(vic_dir->filename_local, entry->d_name);
 
             memset(vic_dir->filename, ' ', FILENAMEMAXSIZE + 2);
             vic_dir->filename[0] = '\"';
 
-            char *_filename = vic_dir->filename + 1;
+            char *_filename = (char *)(vic_dir->filename + 1);
 
-            if (entry->d_namlen <= FILENAMEMAXSIZE) {
-                memcpy(_filename, entry->d_name, entry->d_namlen);
-                strtolower(_filename, entry->d_namlen);
-                for (int i = 0; i < entry->d_namlen; i++) _filename[i] = a2p(_filename[i]);
-                _filename[entry->d_namlen] = '\"';
+            int d_namlen = strlen(entry->d_name);
+            // TODO GESTIRE COLLISIONI FILE LINUX (case sensitive)
+            if (d_namlen <= FILENAMEMAXSIZE) {
+                vic_dir->filename_length = d_namlen;
+                memcpy(_filename, entry->d_name, d_namlen);
+                strtolower(_filename, d_namlen);
+                for (int i = 0; i < d_namlen; i++) _filename[i] = a2p(_filename[i]);
+                _filename[d_namlen] = '\"';
             }
             else {
+                vic_dir->filename_length = FILENAMEMAXSIZE;
                 char filename[FILENAMEMAXSIZE + 1];
                 strncpy(filename, entry->d_name, FILENAMEMAXSIZE);
                 filename[FILENAMEMAXSIZE] = '\0';
@@ -5344,41 +5370,27 @@ void get_disk_info() {
             }
 
             memcpy(vic_dir->type, (unsigned char *)" PRG ", 5);
-            vic_dir->blocks = get_file_blocks(disk_path, entry->d_name);
+            vic_dir->blocks = get_file_blocks(disk_path, entry->d_name, &vic_dir->filesize);
             disk_info.n_dir++;
         }
         closedir(dir);
+
+        struct file_hash_entry *current_file, *tmp;
+        HASH_ITER(hh, files, current_file, tmp) {
+            HASH_DEL(files, current_file);
+            free(current_file);
+        }
     }
     else {
-        FILE *fptr = fopen(disk_path, "rb");
-        if (fptr == NULL) {
-            if (errno == ENOENT)
-                fprintf(stderr, "ERROR: file %s not exists\n", disk_path);
-            else if (errno == EACCES)
-                fprintf(stderr, "ERROR: access to file %s not allowed\n", disk_path);
-            else
-                fprintf(stderr, "ERROR: can't open file %s (errno: %d)\n", disk_path, errno);
+        char ext[4] = {0};
+        substr(ext, disk_path, -3, 3);
+        strtolower(ext, 0);
 
-            exit(EXIT_FAILURE);
+        if (strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) { // TODO: test d71 and d81 images
+            disk_info.type = DISK_IMAGE;
+            char *argv[] = {"", "-D", disk_path};
+            vic_string data_buffer;
+            cc1541(3, argv, &data_buffer);
         }
-        else {
-            char ext[4] = {0};
-            substr(ext, disk_path, -3, 3);
-            strtolower(ext, 0);
-
-            if (strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) { // TODO: test d71 and d81 images
-                char *argv[] = {"", "-D", disk_path};
-                unsigned char *_p;
-                int *_i;
-                cc1541(3, argv, _p, _i);
-            }
-        }
-        fclose(fptr);
-    }
-
-    struct file_hash_entry *current_file, *tmp;
-    HASH_ITER(hh, files, current_file, tmp) {
-        HASH_DEL(files, current_file);
-        free(current_file);
-    }
+    }   
 }
