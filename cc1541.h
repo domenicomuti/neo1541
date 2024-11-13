@@ -30,5 +30,6 @@ typedef struct vic_disk_info {
 vic_byte p2a(vic_byte p);
 void extract_file_from_image();
 void get_disk_info();
+void save_file_to_image();
 
 #endif

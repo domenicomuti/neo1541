@@ -118,9 +118,7 @@ void handle_atn() {
         command = get_byte();
 
         print_command(command);
-
-        //printf("BYTE: %c - %X\n", command, command);
-
+        
         if ((command & 0xF0) == LISTEN) {
             device_attentioned = device_listening = ((command & 0x0F) == DEVICE);
             device_talking = 0;
@@ -142,7 +140,7 @@ void handle_atn() {
             channel = command & 0x0F;
         }
         else if ((command & 0xF0) == CLOSE) {
-            // TODO
+            if ((command & 0x0F) == 1) get_disk_info();
         }
         else {
             device_attentioned = device_listening = device_talking = 0;
@@ -198,7 +196,7 @@ void receive_bytes() {
         _filename_ascii[filename.length] = '\0';
         data_buffer.length = 0;
 
-        printf("%s%s: %s\"%s\"\n", COLOR_YELLOW, (channel <= 1 ? "FILENAME" : "COMMAND"), COLOR_RESET, _filename_ascii);
+        printf("%s%s:%s \"%s\"\n", COLOR_YELLOW, (channel <= 1 ? "FILENAME" : "COMMAND"), COLOR_RESET, _filename_ascii);
 
         /*  I added the goto statement to manage a strange behaviour from the VIC20 (don't know if is the same for the C64)
             
@@ -214,7 +212,6 @@ void receive_bytes() {
     else if ((command & 0xF0) == SECOND) {
         if (channel == 1) {
             // Save
-
             if (disk_info.type == DISK_DIR) {
                 char _filepath[PATH_MAX];
                 int _filepath_len = strlen(disk_path);
@@ -231,11 +228,12 @@ void receive_bytes() {
                 if (fwrite(data_buffer.string, data_buffer.length, 1, fptr) == 0)
                     fprintf(stderr, "%sERROR: can't write file (errno %d)%s\n", COLOR_RED, errno, COLOR_RESET);
 
-                printf("%sSAVING FILE: %s%s\n", COLOR_YELLOW, COLOR_RESET, _filepath);
+                printf("%sSAVING FILE:%s %s\n", COLOR_YELLOW, COLOR_RESET, _filepath);
                 fclose(fptr);
             }
             else if (disk_info.type == DISK_IMAGE) {
-                // TODO
+                printf("%sSAVING FILE:%s %s <- %s\n", COLOR_YELLOW, COLOR_RESET, disk_path, _filename_ascii);
+                save_file_to_image();
             }
         }
         else if (channel >= 2 && channel <= 14) {
@@ -335,7 +333,7 @@ void load_file() {
     get_disk_info();
 
     if (vic_string_equal_string(&filename, "$")) {
-        printf("%sLIST FILES: %s%s\n", COLOR_YELLOW, COLOR_RESET, disk_path);
+        printf("%sLIST FILES:%s %s\n", COLOR_YELLOW, COLOR_RESET, disk_path);
         directory_listing();
     }
     else if (vic_string_equal_string(&filename, "..")) {
@@ -358,7 +356,7 @@ void load_file() {
         char _filename[NAME_MAX + 1];
         for (int i = 0; i < filename.length; i++) _filename[i] = p2a(filename.string[i]);
         _filename[filename.length] = '\0';
-        printf("%sSENDING FILE: %s%s -> %s\n", COLOR_YELLOW, COLOR_RESET, disk_path, _filename);
+        printf("%sSENDING FILE:%s %s -> %s\n", COLOR_YELLOW, COLOR_RESET, disk_path, _filename);
         extract_file_from_image();
         if (data_buffer.length == 0)
             return;
@@ -406,7 +404,7 @@ void load_file() {
                 return;
             data_buffer.length = dir_entry->filesize;
             fread(data_buffer.string, data_buffer.length, 1, fptr);
-            printf("%sSENDING FILE: %s%s (%ld bytes)\n", COLOR_YELLOW, COLOR_RESET, _disk_path, data_buffer.length);
+            printf("%sSENDING FILE:%s %s (%ld bytes)\n", COLOR_YELLOW, COLOR_RESET, _disk_path, data_buffer.length);
             fclose(fptr);
         }
     }

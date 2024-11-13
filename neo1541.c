@@ -89,6 +89,7 @@ int main(int argc, char *argv[]) {
     }
 
     initialize_buffers();
+    get_disk_info();
 
     // TODO: VERIFICARE SE SU WIN FUNZIONA REALPATH (rimuove automaticamente final slash)
 
