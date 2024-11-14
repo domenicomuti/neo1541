@@ -27,7 +27,9 @@ int atn(int value) {
 }
 
 void wait_atn(int value) {
-    //printf("WAIT ATN\n");
+#if DEBUG
+    printf("WAIT ATN\n");
+#endif
     if (value) 
         value = 0x10;
     while ((INB(addr + 1) & 0x10) == value) {
@@ -38,27 +40,44 @@ void wait_atn(int value) {
     }
 }
 
-void wait_clock(int value) {
-    //printf("WAIT CLOCK LINE %s\n", value ? "TRUE" : "FALSE");
+int wait_clock(int value, int timeout) {
+#if DEBUG
+    printf("WAIT CLOCK LINE %s\n", value ? "TRUE" : "FALSE");
+#endif
     if (value) 
         value = 0x20;
+    suseconds_t a = get_microsec();
     while ((INB(addr + 1) & 0x20) == value) {
+        if ((timeout > 0) && ((get_microsec() - a) > (timeout))) {
+        #if DEBUG
+            printf("%sTIMEOUT %s%s\n", COLOR_RED, __func__, COLOR_RESET);
+        #endif
+            return 0;
+            break;
+        }
         if (resetted()) {
             device_resetted = 1;
             break;
         }
     }
+    return 1;
 }
 
 int wait_data(int value, int timeout) {
-    //printf("WAIT DATA LINE %s\n", value ? "TRUE" : "FALSE");
+#if DEBUG
+    printf("WAIT DATA LINE %s\n", value ? "TRUE" : "FALSE");
+#endif
     if (value) 
         value = 0x40;
 #ifdef __linux__
     suseconds_t a = get_microsec();
     while ((INB(addr + 1) & 0x40) == value) {
-        if ((timeout > 0) && ((get_microsec() - a) > timeout))
+        if ((timeout > 0) && ((get_microsec() - a) > (timeout))) {
+            #if DEBUG
+                printf("%sTIMEOUT %s%s\n", COLOR_RED, __func__, COLOR_RESET);
+            #endif
             return 0;
+        }       
     }
 #elif _WIN32
     LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
@@ -77,7 +96,9 @@ int wait_data(int value, int timeout) {
 }
 
 void set_clock(int value) {
-    //printf("SET CLOCK %s\n", value ? "TRUE" : "FALSE");
+#if DEBUG
+    printf("SET CLOCK %s\n", value ? "TRUE" : "FALSE");
+#endif
     if (value)
         OUTB((INB(addr + 2) | 2), addr + 2);    // set Clock to 1 (Commodore True)
     else
@@ -86,7 +107,9 @@ void set_clock(int value) {
 }
 
 void set_data(int value) {
-    //printf("SET DATA %s\n", value ? "TRUE" : "FALSE");
+#if DEBUG
+    printf("SET DATA %s\n", value ? "TRUE" : "FALSE");
+#endif
     if (value)
         OUTB((INB(addr + 2) & ~4), addr + 2);   // set Data to 0 (Commodore True)
     else
@@ -94,7 +117,9 @@ void set_data(int value) {
 }
 
 int eoi() {
-    //printf("WAIT CLOCK LINE TRUE - CHECK EOI\n");
+#if DEBUG
+    printf("WAIT CLOCK LINE TRUE - CHECK EOI\n");
+#endif
 #ifdef __linux__
     suseconds_t a = get_microsec();
     suseconds_t elapsed;

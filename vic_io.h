@@ -12,13 +12,14 @@
 
 #include <stdio.h>
 
+#include "constants.h"
 #include "timing.h"
 #include "display.h"
 
 int resetted();
 int atn(int value);
 void wait_atn(int value);
-void wait_clock(int value);
+int wait_clock(int value, int timeout);
 int wait_data(int value, int timeout);
 void set_clock(int value);
 void set_data(int value);

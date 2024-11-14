@@ -1,5 +1,7 @@
 #include <limits.h>
 
+#define DEBUG                0
+
 #ifdef _WIN32
 #define FILESEPARATOR        '\\'
 #else

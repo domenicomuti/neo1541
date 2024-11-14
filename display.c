@@ -1,27 +1,45 @@
 #include "display.h"
 
+#if !DEBUG
 extern int device_resetted;
+static long int _microsec = 0;
+static int last_percent = -1;
+#endif
 
 void create_progress_bar() {
-    printf("                                                                                                     0%%\n");
+#if !DEBUG
+    _microsec = 0;
+    last_percent = -1;
+    printf("\n");
+#endif
 }
 
 void set_progress_bar(int percent) {
-    if (device_resetted) return;
+#if !DEBUG
+    if (device_resetted || last_percent == percent)
+        return;
+    last_percent = percent;
 
-    char progress_bar[200] = GREEN_SQUARE;
-    for (int i = 0; i < percent; i++) {
-        strcat(progress_bar, " ");
-    }
-    strcat(progress_bar, COLOR_RESET);
-    for (int i = percent; i < 100; i++) {
-        strcat(progress_bar, " ");
-    }
+    int square_size = strlen(GREEN_SQUARE);
+    int color_reset_size = strlen(COLOR_RESET);
+    int progress_bar_size = ((2 * square_size) + color_reset_size + 106) * sizeof(char);
 
-    char _percent[6];
+    char *progress_bar = malloc(progress_bar_size);
+    memset(progress_bar, ' ', progress_bar_size);
+
+    memcpy(progress_bar, GREEN_SQUARE, square_size);
+    memcpy(progress_bar + square_size + percent, WHITE_SQUARE, square_size);
+    memcpy(progress_bar + (2 * square_size) + 100, COLOR_RESET, color_reset_size);
+
+    char _percent[6] = {0};
     sprintf(_percent, " %d%%", percent);
-    strcat(progress_bar, _percent);
-    
+    memcpy(progress_bar + (2 * square_size) + 100 + color_reset_size, _percent, 6);
+
     CURSOR_UP(1);
-    printf("%s\n", progress_bar);
+    if (_microsec == 0)
+        _microsec = get_microsec();
+    printf("[%ld] %s\n", _microsec, progress_bar);
+
+    free(progress_bar);
+#endif
 }

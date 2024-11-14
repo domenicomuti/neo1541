@@ -21,6 +21,6 @@ void directory_listing();
 void load_file();
 void send_bytes();
 
-void print_command(vic_byte command);
+int valid_command(vic_byte command);
 
 #endif

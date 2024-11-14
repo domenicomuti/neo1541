@@ -50,11 +50,7 @@ int main() {
 
     //outb(0xD0, addr + 2); // Enable Interrupt on PCR register
 
-
     int in;
-    int k_data = 0;
-    int k_clock = 0;
-    int k_reset = 0;
 
     do {
         print_psr(addr);
@@ -63,36 +59,30 @@ int main() {
         in = getch();
         mvprintw(10, 0, "%d ", in);
         if (in == 100) {
-            if (!k_data) {
+            if ((inb(addr + 1) & 0x40) == 0) {
                 outb((inb(addr + 2) | 4), addr + 2);
-                k_data = 1;
             }
             else {
                 mvprintw(9, 0, "    ");
                 outb((inb(addr + 2) & ~4), addr + 2);
-                k_data = 0;
             }
         }
         else if (in == 99) {
-            if (!k_clock) {
+            if ((inb(addr + 1) & 0x20) == 0x20) {
                 outb((inb(addr + 2) | 2), addr + 2);
-                k_clock = 1;
             }
             else {
                 mvprintw(10, 0, "     ");
                 outb((inb(addr + 2) & ~2), addr + 2);
-                k_clock = 0;
             }
         }
         else if (in == 114) {
-            if (!k_reset) {
+            if ((inb(addr + 1) & 0x80) == 0) {
                 outb((inb(addr + 2) | 8), addr + 2);
-                k_reset = 1;
             }
             else {
                 mvprintw(11, 0, "     ");
                 outb((inb(addr + 2) & ~8), addr + 2);
-                k_reset = 0;
             }
         }
         

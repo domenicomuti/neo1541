@@ -33,6 +33,8 @@ extern LARGE_INTEGER lpFrequency;
 
 int main(int argc, char *argv[]) {
 
+    //fclose(stdout);
+
 #ifdef __linux__
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
@@ -98,15 +100,16 @@ int main(int argc, char *argv[]) {
 
         while (resetted()) microsleep(1000);
 
+        set_clock(0);   // Release clock and data line
+        set_data(0);
+
         device_resetted = _resetted_message_displayed = 0;
-        printf("%sDEVICE RESET OK%s\n", COLOR_GREEN, COLOR_RESET);
         
         wait_atn(0);
-        printf("%sDEVICE STARTED%s\n", COLOR_CYAN, COLOR_RESET);
+        printf("[%ld] %sDEVICE WAITING FOR ATN%s\n", get_microsec(), COLOR_CYAN, COLOR_RESET);
 
         while (1) {
-            if (!device_attentioned)
-                microsleep(900);
+            if (!device_attentioned) microsleep(900);
                 
             if (atn(1))
                 handle_atn();
