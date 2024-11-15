@@ -5,6 +5,7 @@
 #include <sys/io.h>
 #define INB(port) inb(port)
 #define OUTB(value, port) outb(value, port)
+
 #elif _WIN32
 #define INB(port) printf("INB(%d)", port)
 #define OUTB(value, port) printf("OUTB(%d, %d)", value, port)

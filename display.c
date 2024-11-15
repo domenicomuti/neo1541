@@ -3,22 +3,22 @@
 #if !DEBUG
 extern int device_resetted;
 static long int _microsec = 0;
-static int last_percent = -1;
+static int _last_percent = -1;
 #endif
 
 void create_progress_bar() {
 #if !DEBUG
     _microsec = 0;
-    last_percent = -1;
+    _last_percent = -1;
     printf("\n");
 #endif
 }
 
 void set_progress_bar(int percent) {
 #if !DEBUG
-    if (device_resetted || last_percent == percent)
+    if (device_resetted || _last_percent == percent)
         return;
-    last_percent = percent;
+    _last_percent = percent;
 
     int square_size = strlen(GREEN_SQUARE);
     int color_reset_size = strlen(COLOR_RESET);

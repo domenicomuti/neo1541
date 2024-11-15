@@ -1,12 +1,15 @@
-#ifndef CC1541_H
-#define CC1541_H
+#ifndef DISK_H
+#define DISK_H
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+#include <dirent.h>
 #include "constants.h"
+#include "libs/cc1541.h"
+#include "libs/uthash.h"
 #include "string_functions.h"
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
+#include "display.h"
 
 typedef struct vic_disk_dir {
     vic_size filesize;
@@ -27,9 +30,10 @@ typedef struct vic_disk_info {
     int bam_message_length;
 } vic_disk_info;
 
-vic_byte p2a(vic_byte p);
-void extract_file_from_image();
 void get_disk_info();
+void extract_file_from_image();
 void save_file_to_image();
+void directory_listing();
+void write_data_buffer();
 
 #endif

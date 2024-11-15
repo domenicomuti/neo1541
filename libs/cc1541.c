@@ -36,9 +36,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <wchar.h>
-#include <dirent.h>
-#include <errno.h>
-#include "uthash.h"
 #include "cc1541.h"
 
 #ifdef _WIN32
@@ -275,10 +272,6 @@ static int unicode         = 0;      /* which unicode mapping to use: 0 = none, 
 static int modified        = 0;      /* image needs to be written */
 static int dir_error       = DIR_OK; /* directory has an error */
 
-bool _extract_files      = false;
-bool _print_directory    = false;
-bool _save_file_to_image = false;
-
 extern char disk_path[PATH_MAX];
 extern vic_disk_info disk_info;
 extern vic_string data_buffer;
@@ -386,7 +379,7 @@ usage(void)
 }*/
 
 /* Returns a pointer to the filename in a path */
-static const unsigned char*
+const unsigned char*
 basename(const unsigned char* path)
 {
     const unsigned char* name;
@@ -496,7 +489,7 @@ dirtrack(image_type type)
 }
 
 /* Converts an ASCII character to PETSCII */
-static unsigned char
+unsigned char
 a2p(unsigned char a)
 {
     switch (a) {
@@ -523,8 +516,8 @@ a2p(unsigned char a)
 }
 
 /* Converts a PETSCII character to ASCII */
-vic_byte
-p2a(vic_byte p)
+unsigned char
+p2a(unsigned char p)
 {
     switch (p) {
     case 0x0a:
@@ -4735,7 +4728,7 @@ extract_files(image_type type, unsigned char *image)
 }
 
 int
-cc1541()
+cc1541(int mode)
 {
     imagefile files[MAXNUMFILES_D81];
     memset(files, 0, sizeof files);
@@ -5135,7 +5128,7 @@ cc1541()
 
     num_files = 0;
     modified = 0;
-    if (_save_file_to_image) {
+    if (mode == CC1541_SAVE_FILE_TO_IMAGE) {
         memcpy(files[0].pfilename, filename.string, filename.length);
         memset(&files[0].pfilename[filename.length], FILENAMEEMPTYCHAR, FILENAMEMAXSIZE - filename.length);
         files[0].sectorInterleave = sectorInterleave ? sectorInterleave : defaultSectorInterleave;
@@ -5150,7 +5143,6 @@ cc1541()
         filetype = 0x82;
         num_files = 1;
         modified = 1;
-        _save_file_to_image = false;
     }
 
     if (strlen(imagepath) >= 4) {
@@ -5286,10 +5278,8 @@ cc1541()
     }
 
     /* Extract files */
-    if (_extract_files) {
+    if (mode == CC1541_EXTRACT_FILES)
         extract_files(type, image);
-        _extract_files = false;
-    }
 
     /* Apply patches */
     apply_patches(type, image, patches, num_patches);
@@ -5307,10 +5297,8 @@ cc1541()
     int blocks_free = check_bam(type, image);
 
     /* Print directory */
-    if (_print_directory) {
+    if (mode == CC1541_PRINT_DIRECTORY)
         print_directory(type, image, blocks_free);
-        _print_directory = false;
-    }
 
     /* Show directory issues if present */
     if(dir_error != DIR_OK) {
@@ -5344,166 +5332,4 @@ cc1541()
     free(image);
 
     return retval;
-}
-
-void extract_file_from_image() {
-    data_buffer.length = 0;
-    _extract_files = true;
-    cc1541();
-}
-
-unsigned short get_file_blocks(char *path, char *_filename, vic_size *filesize) {
-    char *_path = calloc(strlen(path) + strlen(_filename) + 2, sizeof(char));
-    if (_path == NULL) {
-        fprintf(stderr, "ERROR: Memory allocation error\n");
-        exit(EXIT_FAILURE);
-    }
-    strcpy(_path, path);
-    int offset = 0;
-    if (_path[strlen(path) - 1] != FILESEPARATOR) {
-        _path[strlen(path)] = FILESEPARATOR;
-        offset = 1;
-    }
-    strcpy(_path + strlen(path) + offset, _filename);
-
-#ifdef __linux__
-    unsigned long long blocks;
-    FILE* fptr = fopen(_path, "rb");
-    if (fptr == NULL) {
-        blocks = 0;
-        *filesize = 0;
-    }
-    else {
-        fseek(fptr, 0L, SEEK_END);
-        *filesize = ftell(fptr);
-        if (*filesize == LONG_MAX) *filesize = 0;
-        blocks = ceil(*filesize / 256.0);
-        fclose(fptr);
-    }
-#elif _WIN64
-    unsigned long long blocks;
-    int fh = _open(_path, _O_BINARY | _O_RDONLY);
-    if (fh == -1) {
-        blocks = 0;
-    }
-    else {
-        _lseeki64(fh, 0L, SEEK_END);
-        blocks = ceil(_telli64(fh) / 256.0);
-        _close(fh);
-    }
-#elif _WIN32
-    // TODO
-#endif
-
-    free(_path);
-    if (blocks > 999) blocks = 999;
-    return (unsigned short)blocks;
-}
-
-void get_disk_info() {
-    DIR *dir;
-    struct dirent *entry;
-    
-    dir = opendir(disk_path);
-    if (dir) {
-        disk_info.type = DISK_DIR;
-        disk_info.blocks_free = 0;
-
-        // Header
-        memset(disk_info.header, ' ', HEADER_SIZE);
-        disk_info.header[0] = 0x12; // Reverse print
-        disk_info.header[1] = '\"';
-        char *_header = (char *)(disk_info.header + 2);
-        char *_basename = (char *)basename((unsigned char *)disk_path);
-        int _basename_len = strlen(_basename);
-        if (_basename_len > (HEADER_SIZE - 9))
-            _basename_len = HEADER_SIZE - 9;
-        memcpy(_header, _basename, _basename_len);
-        strtolower(_header, _basename_len);
-        for (int i = 0; i < _basename_len; i++) _header[i] = a2p(_header[i]);
-        memcpy(disk_info.header + HEADER_SIZE - 7, (unsigned char *)"\" ID 00", 7);
-
-        struct file_hash_entry {
-            char filename[FILENAMEMAXSIZE + 1];
-            int n;
-            UT_hash_handle hh;
-        };
-        struct file_hash_entry *files = NULL;
-
-        disk_info.n_dir = 0;
-        while ((entry = readdir(dir)) != NULL) {
-            if (strcmp(entry->d_name, ".") == 0) continue;
-
-            vic_disk_dir *vic_dir = &disk_info.dir[disk_info.n_dir++];
-            strcpy(vic_dir->filename_local, entry->d_name);
-
-            memset(vic_dir->filename, ' ', FILENAMEMAXSIZE + 2);
-            vic_dir->filename[0] = '\"';
-
-            char *_filename = (char *)(vic_dir->filename + 1);
-            int d_namelen = strlen(entry->d_name);
-            if (d_namelen > FILENAMEMAXSIZE)
-                d_namelen = FILENAMEMAXSIZE;
-            memcpy(_filename, entry->d_name, d_namelen);
-            strtolower(_filename, d_namelen);
-            for (int i = 0; i < d_namelen; i++) _filename[i] = a2p(_filename[i]);
-
-            _filename[d_namelen] = '\0';
-            struct file_hash_entry *f;
-            HASH_FIND_STR(files, _filename, f);
-            if (f == NULL) {
-                f = malloc(sizeof *f);
-                if (f == NULL) {
-                    fprintf(stderr, "ERROR: Memory allocation error\n");
-                    exit(EXIT_FAILURE);
-                }
-                strcpy(f->filename, _filename);
-                f->n = 1;
-                HASH_ADD_STR(files, filename, f);
-            }
-            else {
-                f->n++;
-            }
-            if (f->n > 1) {
-                if (f->n > 0xFFFF)
-                    f->n = 0xFFFF; // Max 65535 name collisions, more then anybody really needs
-                char _t[6];
-                sprintf(_t, "#%X", f->n);
-                int _t_len = strlen(_t);
-                if ((d_namelen + _t_len) > FILENAMEMAXSIZE) 
-                    d_namelen = FILENAMEMAXSIZE - _t_len;
-                    
-                memcpy(_filename + d_namelen, _t, _t_len);
-                d_namelen += _t_len;
-            }
-            _filename[d_namelen] = '\"';
-            vic_dir->filename_length = d_namelen;
-
-            memcpy(vic_dir->type, (unsigned char *)" PRG ", 5);
-            vic_dir->blocks = get_file_blocks(disk_path, entry->d_name, &vic_dir->filesize);
-        }
-        closedir(dir);
-
-        struct file_hash_entry *current_file, *tmp;
-        HASH_ITER(hh, files, current_file, tmp) {
-            HASH_DEL(files, current_file);
-            free(current_file);
-        }
-    }
-    else {
-        char ext[4] = {0};
-        substr(ext, disk_path, -3, 3);
-        strtolower(ext, 0);
-
-        if (strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) { // TODO: test d71 and d81 images
-            disk_info.type = DISK_IMAGE;
-            _print_directory = true;
-            cc1541();
-        }
-    }   
-}
-
-void save_file_to_image() {
-    _save_file_to_image = true;
-    cc1541();
 }

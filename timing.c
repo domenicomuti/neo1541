@@ -21,7 +21,7 @@ void probe_microsleep_offset() {
 }
 
 #elif _WIN32
-    LARGE_INTEGER lpFrequency;
+LARGE_INTEGER lpFrequency;
 #endif
 
 void microsleep(int duration) {

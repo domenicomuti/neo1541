@@ -24,8 +24,7 @@ extern int _resetted_message_displayed;
 
 extern int addr;
 
-char disk_path[PATH_MAX];
-struct vic_disk_info disk_info;
+extern char disk_path[PATH_MAX];
 
 #ifdef _WIN32
 extern LARGE_INTEGER lpFrequency;
