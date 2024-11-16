@@ -255,7 +255,9 @@ void write_data_buffer() {
     get_disk_info();
 
     if (vic_string_equal_string(&filename, "$")) {
-        printf("[%ld] %sLIST FILES:%s %s\n", get_microsec(), COLOR_YELLOW, COLOR_RESET, disk_path);
+        char _localtime[30];
+        get_localtime(_localtime);
+        printf("[%s] %sLIST FILES:%s %s\n", _localtime, COLOR_YELLOW, COLOR_RESET, disk_path);
         directory_listing();
     }
     else if (vic_string_equal_string(&filename, "..")) {
@@ -278,18 +280,20 @@ void write_data_buffer() {
         char _filename[NAME_MAX + 1];
         for (int i = 0; i < filename.length; i++) _filename[i] = p2a(filename.string[i]);
         _filename[filename.length] = '\0';
-        printf("[%ld] %sSENDING FILE:%s %s -> %s\n", get_microsec(), COLOR_YELLOW, COLOR_RESET, disk_path, _filename);
+        char _localtime[30];
+        get_localtime(_localtime);
+        printf("[%s] %sSENDING FILE:%s %s -> %s\n", _localtime, COLOR_YELLOW, COLOR_RESET, disk_path, _filename);
         extract_file_from_image();
         if (data_buffer.length == 0)
             return;
     }
     else if (disk_info.type == DISK_DIR) {
-        char _disk_path[PATH_MAX];
-        strcpy(_disk_path, disk_path);
+        char image_path[PATH_MAX];
+        strcpy(image_path, disk_path);
 
-        int _disk_path_len = strlen(_disk_path);
-        if (_disk_path_len > 1)
-            _disk_path[_disk_path_len++] = FILESEPARATOR;
+        int image_path_len = strlen(image_path);
+        if (image_path_len > 1)
+            image_path[image_path_len++] = FILESEPARATOR;
 
         vic_disk_dir *dir_entry = NULL;
         for (int i = 0; i < disk_info.n_dir; i++) {
@@ -305,28 +309,30 @@ void write_data_buffer() {
         if (dir_entry == NULL)
             return;
         
-        strcpy(_disk_path + _disk_path_len, dir_entry->filename_local);
-        _disk_path[_disk_path_len + filename.length] = '\0';
+        strcpy(image_path + image_path_len, dir_entry->filename_local);
+        image_path[image_path_len + filename.length] = '\0';
 
         DIR *dir;
-        dir = opendir(_disk_path);
+        dir = opendir(image_path);
         char ext[4] = {0};
-        substr(ext, _disk_path, -3, 3);
+        substr(ext, image_path, -3, 3);
         strtolower(ext, 0);
 
         if (dir || strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) {
-            strcpy(disk_path, _disk_path);
+            strcpy(disk_path, image_path);
             filename.string[0] = '$';
             filename.length = 1;
             write_data_buffer();
         }
         else {
-            FILE *fptr = fopen(_disk_path, "rb");
+            FILE *fptr = fopen(image_path, "rb");
             if (fptr == NULL)
                 return;
             data_buffer.length = dir_entry->filesize;
             fread(data_buffer.string, data_buffer.length, 1, fptr);
-            printf("[%ld] %sSENDING FILE:%s %s (%ld bytes)\n", get_microsec(), COLOR_YELLOW, COLOR_RESET, _disk_path, data_buffer.length);
+            char _localtime[30];
+            get_localtime(_localtime);
+            printf("[%s] %sSENDING FILE:%s %s (%ld bytes)\n", _localtime, COLOR_YELLOW, COLOR_RESET, image_path, data_buffer.length);
             fclose(fptr);
         }
     }

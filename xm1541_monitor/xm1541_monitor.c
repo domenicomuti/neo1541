@@ -36,7 +36,7 @@ int main() {
     iopl(3);
     ioperm(addr, 2, 1);
 
-    outb(0xC0, addr + 2); // Reset PCR
+    //outb(0xC0, addr + 2); // Reset PCR
 
     initscr();
     cbreak();

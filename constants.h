@@ -18,12 +18,14 @@
 #define CC1541_PRINT_DIRECTORY    2
 #define CC1541_SAVE_FILE_TO_IMAGE 3
 
+#define LOCALTIME_STRLEN          13
+
 #define DEVICE                    8
 
-#define LISTEN                    0x20
-#define UNLISTEN                  0x30   // 0x3F
-#define TALK                      0x40
-#define UNTALK                    0x50   // 0x5F
+#define LISTEN                    (0x20 | DEVICE)
+#define UNLISTEN                  0x3F
+#define TALK                      (0x40 | DEVICE)
+#define UNTALK                    0x5F
 #define SECOND                    0x60
 #define CLOSE                     0xE0
 #define OPEN                      0xF0

@@ -2,13 +2,13 @@
 
 #if !DEBUG
 extern int device_resetted;
-static long int _microsec = 0;
+char _localtime[LOCALTIME_STRLEN];
 static int _last_percent = -1;
 #endif
 
 void create_progress_bar() {
 #if !DEBUG
-    _microsec = 0;
+    _localtime[0] = '\0';
     _last_percent = -1;
     printf("\n");
 #endif
@@ -36,9 +36,9 @@ void set_progress_bar(int percent) {
     memcpy(progress_bar + (2 * square_size) + 100 + color_reset_size, _percent, 6);
 
     CURSOR_UP(1);
-    if (_microsec == 0)
-        _microsec = get_microsec();
-    printf("[%ld] %s\n", _microsec, progress_bar);
+    if (_localtime[0] == '\0')
+        get_localtime(_localtime);
+    printf("[%s] %s\n", _localtime, progress_bar);
 
     free(progress_bar);
 #endif

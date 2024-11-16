@@ -105,10 +105,12 @@ int main(int argc, char *argv[]) {
         device_resetted = _resetted_message_displayed = 0;
         
         wait_atn(0);
-        printf("[%ld] %sDEVICE WAITING FOR ATN%s\n", get_microsec(), COLOR_CYAN, COLOR_RESET);
+        char _localtime[LOCALTIME_STRLEN];
+        get_localtime(_localtime);
+        printf("[%s] %sDEVICE WAITING FOR ATN%s\n", _localtime, COLOR_CYAN, COLOR_RESET);
 
         while (1) {
-            if (!device_attentioned) microsleep(900);
+            //if (!device_attentioned) microsleep(900);
                 
             if (atn(1))
                 handle_atn();

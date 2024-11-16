@@ -2,6 +2,7 @@
 #define DEVICE_H
 
 #include <stdlib.h>
+#include <unistd.h>
 #include <errno.h>
 #include "constants.h"
 #include "display.h"
@@ -16,6 +17,8 @@ void handle_atn();
 vic_byte get_byte();
 void send_bytes();
 void receive_bytes();
-int valid_command(vic_byte command);
+void handle_received_bytes();
+void handle_dos_command();
+void print_command(vic_byte command);
 
 #endif

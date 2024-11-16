@@ -4,7 +4,9 @@
 #ifdef __linux__
 #include <sys/time.h>
 #include <time.h>
+#include <stdio.h>
 
+void get_localtime();
 suseconds_t get_microsec();
 void probe_microsleep_offset();
 
