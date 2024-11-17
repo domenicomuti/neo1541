@@ -16,6 +16,7 @@
 #include "constants.h"
 #include "timing.h"
 #include "display.h"
+#include "string_functions.h"
 
 int resetted();
 int atn(int value);
@@ -25,5 +26,6 @@ int wait_data(int value, int timeout);
 void set_clock(int value);
 void set_data(int value);
 int eoi();
+vic_byte get_byte();
 
 #endif

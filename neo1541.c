@@ -19,6 +19,8 @@ extern int device_resetted;
 extern int device_attentioned;
 extern int device_listening;
 extern int device_talking;
+extern int device_listened;
+extern int device_talked;
 
 extern int _resetted_message_displayed;
 
@@ -34,7 +36,7 @@ int main(int argc, char *argv[]) {
 
     //fclose(stdout);
 
-#ifdef __linux__
+    #ifdef __linux__
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
             fprintf(stderr, "ERROR: You must be root\n");
@@ -47,10 +49,10 @@ int main(int argc, char *argv[]) {
     sched_setscheduler(0, SCHED_FIFO, &_sched_param);
 
     probe_microsleep_offset();
-#elif _WIN32
+    #elif _WIN32
     // TODO: CHECK ADMINISTRATOR MODE ?
     QueryPerformanceFrequency(&lpFrequency);
-#endif
+    #endif
 
     char *_disk_path;
 
@@ -112,11 +114,13 @@ int main(int argc, char *argv[]) {
         while (1) {
             //if (!device_attentioned) microsleep(900);
                 
+            //printf("attn%d listening%d listened%d talking%d talked%d\n", device_attentioned, device_listening, device_listened, device_talking, device_talked);
+
             if (atn(1))
                 handle_atn();
-            else if (device_listening)
+            else if (device_listening && !device_listened)
                 receive_bytes();
-            else if (device_talking)
+            else if (device_talking && !device_talked)
                 send_bytes();
 
             if (device_resetted) {

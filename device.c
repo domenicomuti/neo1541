@@ -9,6 +9,8 @@ int device_resetted = 1;
 int device_attentioned = 0;
 int device_listening = 0;
 int device_talking = 0;
+int device_listened = 0;
+int device_talked = 0;
 
 extern char disk_path[PATH_MAX];
 extern vic_disk_info disk_info;
@@ -49,7 +51,7 @@ void reset_device() {
     printf("%s\n", __func__);
     #endif
 
-    device_resetted = device_attentioned = device_listening = device_talking = 0;
+    device_resetted = device_attentioned = device_listening = device_talking = device_listened = device_talked = 0;
 }
 
 void handle_atn() {
@@ -62,13 +64,14 @@ void handle_atn() {
     printf("[%s] %sATN ON%s -> ", _localtime, COLOR_CYAN, COLOR_RESET);
             
     set_data(1);
-    wait_clock(1, 0); // TODO CHECK TIMEOUT
+    wait_clock(1, 1000);
 
     do {
-        wait_clock(0, 0); // Talker is ready to send
-        set_data(0);      // Listener is ready for data
+        wait_clock(0, 0);   // Talker is ready to send
+        set_data(0);        // Listener is ready for data
 
         wait_clock(1, 0);
+
         command = get_byte();
         print_command(command);
 
@@ -76,9 +79,9 @@ void handle_atn() {
 
         if (command == LISTEN) {
             device_attentioned = device_listening = 1;
-            device_talking = 0;
+            device_listened = device_talked = device_talking = 0;
         }
-        else if((command == UNLISTEN) && device_attentioned) {
+        else if((command == UNLISTEN) && device_listening) {
             device_attentioned = device_listening = 0;
             force_frame_handshake = 1;
         }
@@ -87,9 +90,9 @@ void handle_atn() {
         }
         else if (command == TALK) {
             device_attentioned = device_talking = 1;
-            device_listening = 0;
+            device_talked = device_listened = device_listening = 0;
         }
-        else if ((command == UNTALK) && device_attentioned) {
+        else if ((command == UNTALK) && device_talking) {
             device_attentioned = device_talking = 0;
             force_frame_handshake = 1;
         }
@@ -103,65 +106,14 @@ void handle_atn() {
             device_attentioned = device_listening = device_talking = 0;
         }
 
-        // TODO CHECK VALID COMMAND SEQUENCE
-
         if (device_attentioned || force_frame_handshake)
             set_data(1);
+
         wait_clock(0, 0);
     }
     while (atn(1) && !device_resetted);
 
     printf("%sATN OFF%s\n", COLOR_CYAN, COLOR_RESET);
-}
-
-vic_byte get_byte() {
-    #if DEBUG
-    printf("gb ");
-    #endif
-    
-    vic_byte byte = 0;
-
-    // bit 1
-    wait_clock(0, 70); // 70 timeout
-    byte = (INB(addr + 1) & 0x40) >> 6;
-    wait_clock(1, 20); // 20 timeout
-
-    // bit 2
-    wait_clock(0, 70); // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 5;
-    wait_clock(1, 20); // 20 timeout
-
-    // bit 3
-    wait_clock(0, 70); // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 4;
-    wait_clock(1, 20); // 20 timeout
-
-    // bit 4
-    wait_clock(0, 70); // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 3;
-    wait_clock(1, 20); // 20 timeout
-
-    // bit 5
-    wait_clock(0, 70); // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 2;
-    wait_clock(1, 20); // 20 timeout
-    
-    // bit 6
-    wait_clock(0, 70); // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 1;
-    wait_clock(1, 20); // 20 timeout
-
-    // bit 7
-    wait_clock(0, 70); // 70 timeout
-    byte |= (INB(addr + 1) & 0x40);
-    wait_clock(1, 20); // 20 timeout
-
-    // bit 8
-    wait_clock(0, 70); // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) << 1;
-    wait_clock(1, 20); // 20 timeout
-
-    return byte;
 }
 
 void send_bytes() {
@@ -190,11 +142,13 @@ void send_bytes() {
         
         if (resetted()) {
             device_resetted = 1;
-            return;
+            goto end;
         }
         else if (atn(1)) {
+            set_clock(0);
+            set_data(1);
             handle_atn();
-            return;
+            goto end;
         }
         else if (error) {
             char _localtime[LOCALTIME_STRLEN];
@@ -202,9 +156,9 @@ void send_bytes() {
             fprintf(stderr, "[%s] %sERROR: can't send file %s\n", _localtime, COLOR_RED, COLOR_RESET);
             printf("A%d L%d T%d R%d\n", device_attentioned, device_listening, device_talking, device_resetted);
             device_attentioned = device_talking = filename.length = 0;
-            //sleep(1);
-            //set_clock(0);
-            return;
+            set_clock(0);
+            set_data(0);
+            goto end;
         }
         
         set_clock(0);       // Device is ready to send
@@ -215,8 +169,9 @@ void send_bytes() {
             get_localtime(_localtime);
             fprintf(stderr, "[%s] %sERROR: file not found%s\n", _localtime, COLOR_RED, COLOR_RESET);
             device_attentioned = device_talking = filename.length = 0;
+            set_clock(0);
             set_data(0);
-            return;
+            goto end;
         }
 
         int eoi = 0;
@@ -272,7 +227,7 @@ void send_bytes() {
 
         set_clock(1);
 
-        if (!wait_data(1, 1000) && (eoi == 0)) {
+        if (!wait_data(1, 1000)) {
             error = 1;
             continue;
         }
@@ -286,7 +241,8 @@ void send_bytes() {
     set_clock(0);
     set_data(0);
 
-    device_talking = 0;
+    end:
+    device_talked = 1;
 }
 
 void receive_bytes() {
@@ -324,7 +280,7 @@ void receive_bytes() {
 
     handle_received_bytes();
 
-    device_listening = 0;
+    device_listened = 1;
 }
 
 void handle_received_bytes() {

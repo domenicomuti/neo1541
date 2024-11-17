@@ -14,7 +14,6 @@ void free_buffers();
 
 void reset_device();
 void handle_atn();
-vic_byte get_byte();
 void send_bytes();
 void receive_bytes();
 void handle_received_bytes();

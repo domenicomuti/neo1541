@@ -27,9 +27,10 @@ int atn(int value) {
 }
 
 void wait_atn(int value) {
-#if DEBUG
+    #if DEBUG
     printf("watn ");
-#endif
+    #endif
+    
     if (value) 
         value = 0x10;
     while ((INB(addr + 1) & 0x10) == value) {
@@ -41,25 +42,23 @@ void wait_atn(int value) {
 }
 
 int wait_clock(int value, int timeout) {
-#if DEBUG
+    #if DEBUG
     printf("wc%d(%d) ", value, timeout);
-#endif
+    #endif
+
     if (value) 
         value = 0x20;
     suseconds_t a = get_microsec();
     while ((INB(addr + 1) & 0x20) == value) {
         if ((timeout > 0) && ((get_microsec() - a) > timeout)) {
-        //#if DEBUG
-            //printf("%stimeout %s%s", COLOR_RED, __func__, COLOR_RESET);
-        //#endif
-            return 0;
+            return 1;
         }
-        if (resetted()) {
+        else if (resetted()) {
             device_resetted = 1;
-            break;
+            return 1;
         }
     }
-    return 1;
+    return 0;
 }
 
 int wait_data(int value, int timeout) {
@@ -121,10 +120,11 @@ void set_data(int value) {
 }
 
 int eoi() {
-#if DEBUG
+    #if DEBUG
     printf("eoi? ");
-#endif
-#ifdef __linux__
+    #endif
+
+    #ifdef __linux__
     suseconds_t a = get_microsec();
     suseconds_t elapsed;
     int eoi = 0;
@@ -138,7 +138,7 @@ int eoi() {
             break;
         }
     }
-#elif _WIN32
+    #elif _WIN32
     LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
     QueryPerformanceCounter(&StartingTime);
     int eoi = 0;
@@ -154,6 +154,57 @@ int eoi() {
             break;
         }
     }
-#endif
+    #endif
+    
     return eoi;
+}
+
+vic_byte get_byte() {
+    #if DEBUG
+    printf("gb ");
+    #endif
+    
+    vic_byte byte = 0;
+
+    // bit 1
+    wait_clock(0, 0); // 70 timeout
+    byte = (INB(addr + 1) & 0x40) >> 6;
+    wait_clock(1, 0); // 20 timeout
+
+    // bit 2
+    wait_clock(0, 0); // 70 timeout
+    byte |= (INB(addr + 1) & 0x40) >> 5;
+    wait_clock(1, 0); // 20 timeout
+
+    // bit 3
+    wait_clock(0, 0); // 70 timeout
+    byte |= (INB(addr + 1) & 0x40) >> 4;
+    wait_clock(1, 0); // 20 timeout
+
+    // bit 4
+    wait_clock(0, 0); // 70 timeout
+    byte |= (INB(addr + 1) & 0x40) >> 3;
+    wait_clock(1, 0); // 20 timeout
+
+    // bit 5
+    wait_clock(0, 0); // 70 timeout
+    byte |= (INB(addr + 1) & 0x40) >> 2;
+    wait_clock(1, 0); // 20 timeout
+    
+    // bit 6
+    wait_clock(0, 0); // 70 timeout
+    byte |= (INB(addr + 1) & 0x40) >> 1;
+    wait_clock(1, 0); // 20 timeout
+
+    // bit 7
+    wait_clock(0, 0); // 70 timeout
+    byte |= (INB(addr + 1) & 0x40);
+    wait_clock(1, 0); // 20 timeout
+
+    // bit 8
+    wait_clock(0, 0); // 70 timeout
+    byte |= (INB(addr + 1) & 0x40) << 1;
+    wait_clock(1, 0); // 20 timeout
+
+    return byte;
 }
