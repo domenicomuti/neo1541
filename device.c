@@ -63,12 +63,12 @@ void handle_atn() {
     get_localtime(_localtime);
     printf("[%s] %sATN ON%s -> ", _localtime, COLOR_CYAN, COLOR_RESET);
             
-    set_data(1);
+    set(DATA_HIGH);
     wait_clock(1, 1000);
 
     do {
         wait_clock(0, 0);   // Talker is ready to send
-        set_data(0);        // Listener is ready for data
+        set(DATA_LOW);      // Listener is ready for data
 
         wait_clock(1, 0);
 
@@ -107,7 +107,7 @@ void handle_atn() {
         }
 
         if (device_attentioned || force_frame_handshake)
-            set_data(1);
+            set(DATA_HIGH);
 
         wait_clock(0, 0);
     }
@@ -121,8 +121,7 @@ void send_bytes() {
     printf("sb ");
     #endif
 
-    set_data(0);
-    set_clock(1);
+    set(DATA_LOW | CLOCK_HIGH);
 
     write_data_buffer();
 
@@ -145,8 +144,7 @@ void send_bytes() {
             goto end;
         }
         else if (atn(1)) {
-            set_clock(0);
-            set_data(1);
+            set(CLOCK_LOW | DATA_HIGH);
             handle_atn();
             goto end;
         }
@@ -154,23 +152,20 @@ void send_bytes() {
             char _localtime[LOCALTIME_STRLEN];
             get_localtime(_localtime);
             fprintf(stderr, "[%s] %sERROR: can't send file %s\n", _localtime, COLOR_RED, COLOR_RESET);
-            printf("A%d L%d T%d R%d\n", device_attentioned, device_listening, device_talking, device_resetted);
             device_attentioned = device_talking = filename.length = 0;
-            set_clock(0);
-            set_data(0);
+            set(CLOCK_LOW | DATA_LOW);
             goto end;
         }
         
-        set_clock(0);       // Device is ready to send
-        wait_data(0, 0);    // Computer is ready for data
+        set(CLOCK_LOW);    // Device is ready to send
+        wait_data(0, 0);   // Computer is ready for data
 
         if (data_buffer.length == 0) { // Empty stream
             char _localtime[LOCALTIME_STRLEN];
             get_localtime(_localtime);
             fprintf(stderr, "[%s] %sERROR: file not found%s\n", _localtime, COLOR_RED, COLOR_RESET);
             device_attentioned = device_talking = filename.length = 0;
-            set_clock(0);
-            set_data(0);
+            set(CLOCK_LOW | DATA_LOW);
             goto end;
         }
 
@@ -192,15 +187,15 @@ void send_bytes() {
         #ifdef __linux__
         suseconds_t a;
         for (int i = 0; i < 8; i++) {
-            set_clock(1);
+            set(CLOCK_HIGH);
             a = get_microsec();
-            set_data((~c >> i) & 1);
+            set(((~c >> i) & 1) ? DATA_HIGH : DATA_LOW);
             while ((get_microsec() - a) < 70) {} // Bit setup
 
-            set_clock(0);
+            set(CLOCK_LOW);
             a = get_microsec();
             while ((get_microsec() - a) < 20) {} // Data valid (20us for the VIC20, 60us for the Commodore 64)
-            set_data(0);
+            set(DATA_LOW);
         }
         #elif _WIN64
         LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
@@ -221,25 +216,24 @@ void send_bytes() {
             ElapsedMicroseconds.QuadPart *= 1000000;
             ElapsedMicroseconds.QuadPart /= lpFrequency.QuadPart;
             while (ElapsedMicroseconds.QuadPart < 60) {}
-            set_data(0);
+            set(DATA_LOW);
         }
         #endif
 
-        set_clock(1);
+        set(CLOCK_HIGH);
 
         if (!wait_data(1, 1000)) {
-            error = 1;
+            i_file = data_buffer.length;
             continue;
         }
 
-        microsleep(100); // Between bytes time
+        microsleep(100);   // Between bytes time
 
         if (eoi) break;
     }
     while (1);
 
-    set_clock(0);
-    set_data(0);
+    set(CLOCK_LOW | DATA_LOW);
 
     end:
     device_talked = 1;
@@ -255,13 +249,13 @@ void receive_bytes() {
     int _eoi = 0;
     do {
         wait_clock(0, 0);   // Talker is ready to send
-        set_data(0);        // Listener is ready for data
+        set(DATA_LOW);      // Listener is ready for data
         
         int _timeout = 0;
         if (eoi()) {
-            set_data(1);
+            set(DATA_HIGH);
             microsleep(60);
-            set_data(0);
+            set(DATA_LOW);
             _eoi = 1;
             _timeout = 60;
         }
@@ -269,7 +263,7 @@ void receive_bytes() {
         wait_clock(1, _timeout);
         data_buffer.string[data_buffer.length++] = get_byte();
 
-        set_data(1);   // Frame Handshake
+        set(DATA_HIGH);   // Frame Handshake
         microsleep(100);
 
         #if DEBUG

@@ -48,7 +48,6 @@ int main(int argc, char *argv[]) {
     _sched_param.sched_priority = 99;
     sched_setscheduler(0, SCHED_FIFO, &_sched_param);
 
-    probe_microsleep_offset();
     #elif _WIN32
     // TODO: CHECK ADMINISTRATOR MODE ?
     QueryPerformanceFrequency(&lpFrequency);
@@ -101,8 +100,7 @@ int main(int argc, char *argv[]) {
 
         while (resetted()) microsleep(1000);
 
-        set_clock(0);   // Release clock and data line
-        set_data(0);
+        set(CLOCK_LOW | DATA_LOW);   // Release clock and data line
 
         device_resetted = _resetted_message_displayed = 0;
         

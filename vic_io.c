@@ -96,27 +96,34 @@ int wait_data(int value, int timeout) {
     return 1;
 }
 
-void set_clock(int value) {
-    #if DEBUG
-    printf("sc%d ", value);
-    #endif
-
-    if (value)
-        OUTB((INB(addr + 2) | 2), addr + 2);    // set Clock to 1 (Commodore True)
-    else
-        OUTB((INB(addr + 2) & ~2), addr + 2);   // set Clock to 0 (Commodore False)
-        
-}
-
-void set_data(int value) {
-    #if DEBUG
-    printf("sd%d ", value);
-    #endif
-
-    if (value)
-        OUTB((INB(addr + 2) & ~4), addr + 2);   // set Data to 0 (Commodore True)
-    else
-        OUTB((INB(addr + 2) | 4), addr + 2);    // set Data to 1 (Commodore False)
+void set(vic_byte value) {
+    vic_byte in_value = INB(addr + 2);
+    vic_byte out_value = in_value;
+    if ((value & CLOCK_HIGH) == CLOCK_HIGH) {
+        out_value |= 2;    // set Clock to 1 (Commodore True)
+        #if DEBUG
+        printf("sc1 ");
+        #endif
+    }
+    if ((value & CLOCK_LOW) == CLOCK_LOW) {
+        out_value &= ~2;   // set Clock to 0 (Commodore False)
+        #if DEBUG
+        printf("sc0 ");
+        #endif
+    }
+    if ((value & DATA_HIGH) == DATA_HIGH) {
+        out_value &= ~4;   // set Data to 0 (Commodore True)
+        #if DEBUG
+        printf("sd1 ");
+        #endif
+    }
+    if ((value & DATA_LOW) == DATA_LOW) {
+        out_value |= 4;    // set Data to 1 (Commodore False)
+        #if DEBUG
+        printf("sd0 ");
+        #endif
+    }
+    OUTB(out_value, addr + 2);
 }
 
 int eoi() {
