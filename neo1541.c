@@ -1,3 +1,7 @@
+#define basename ciao
+#define _GNU_SOURCE
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -19,8 +23,6 @@ extern int device_resetted;
 extern int device_attentioned;
 extern int device_listening;
 extern int device_talking;
-extern int device_listened;
-extern int device_talked;
 
 extern int _resetted_message_displayed;
 
@@ -47,6 +49,11 @@ int main(int argc, char *argv[]) {
     struct sched_param _sched_param;
     _sched_param.sched_priority = 99;
     sched_setscheduler(0, SCHED_FIFO, &_sched_param);
+
+    cpu_set_t my_set;
+    CPU_ZERO(&my_set);
+    CPU_SET(3, &my_set);
+    sched_setaffinity(0, sizeof(cpu_set_t), &my_set);
 
     #elif _WIN32
     // TODO: CHECK ADMINISTRATOR MODE ?
@@ -110,16 +117,8 @@ int main(int argc, char *argv[]) {
         printf("[%s] %sDEVICE WAITING FOR ATN%s\n", _localtime, COLOR_CYAN, COLOR_RESET);
 
         while (1) {
-            //if (!device_attentioned) microsleep(900);
-                
-            //printf("attn%d listening%d listened%d talking%d talked%d\n", device_attentioned, device_listening, device_listened, device_talking, device_talked);
-
             if (atn(1))
                 handle_atn();
-            else if (device_listening && !device_listened)
-                receive_bytes();
-            else if (device_talking && !device_talked)
-                send_bytes();
 
             if (device_resetted) {
                 reset_device();

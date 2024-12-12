@@ -9,8 +9,6 @@ int device_resetted = 1;
 int device_attentioned = 0;
 int device_listening = 0;
 int device_talking = 0;
-int device_listened = 0;
-int device_talked = 0;
 
 extern char disk_path[PATH_MAX];
 extern vic_disk_info disk_info;
@@ -51,7 +49,12 @@ void reset_device() {
     printf("%s\n", __func__);
     #endif
 
-    device_resetted = device_attentioned = device_listening = device_talking = device_listened = device_talked = 0;
+    device_resetted = device_attentioned = device_listening = device_talking = 0;
+}
+
+void try_unfreeze() {
+    set(CLOCK_HIGH); microsleep(100); set(CLOCK_LOW);
+    //set(DATA_HIGH);  microsleep(1000); set(DATA_LOW);
 }
 
 void handle_atn() {
@@ -63,56 +66,65 @@ void handle_atn() {
     get_localtime(_localtime);
     printf("[%s] %sATN ON%s -> ", _localtime, COLOR_CYAN, COLOR_RESET);
             
-    set(DATA_HIGH);
-    wait_clock(1, 1000);
+    set(CLOCK_LOW | DATA_HIGH);
+    if (wait_clock(1, 1000000, 1)) goto error;
 
     do {
-        wait_clock(0, 0);   // Talker is ready to send
-        set(DATA_LOW);      // Listener is ready for data
+        if (wait_clock(0, 0, 1)) goto end;   // Talker is ready to send
+        set(DATA_LOW);                       // Listener is ready for data
 
-        wait_clock(1, 0);
+        if (wait_clock(1, 0, 1)) goto error;
 
-        command = get_byte();
+        command = get_byte(1);
         print_command(command);
-
-        int force_frame_handshake = 0;
 
         if (command == LISTEN) {
             device_attentioned = device_listening = 1;
-            device_listened = device_talked = device_talking = 0;
+            device_talking = 0;
+            continue;
         }
         else if((command == UNLISTEN) && device_listening) {
             device_attentioned = device_listening = 0;
-            force_frame_handshake = 1;
+        }
+        else if (command == TALK) {
+            device_attentioned = device_talking = 1;
+            device_listening = 0;
+            continue;
+        }
+        else if ((command == UNTALK) && device_talking) {
+            device_attentioned = device_talking = 0;
         }
         else if (((command & 0xF0) == OPEN) && device_attentioned) {
             channel = command & 0x0F;
         }
-        else if (command == TALK) {
-            device_attentioned = device_talking = 1;
-            device_talked = device_listened = device_listening = 0;
-        }
-        else if ((command == UNTALK) && device_talking) {
-            device_attentioned = device_talking = 0;
-            force_frame_handshake = 1;
+        else if (((command & 0xF0) == CLOSE) && device_attentioned) {
+            if ((command & 0x0F) == 1) get_disk_info();
+            continue;
         }
         else if (((command & 0xF0) == SECOND) && device_attentioned) {
             channel = command & 0x0F;
         }
-        else if (((command & 0xF0) == CLOSE) && device_attentioned) {
-            if ((command & 0x0F) == 1) get_disk_info();
-        }
         else {
+            error:
+            try_unfreeze();
+            set(CLOCK_LOW | DATA_LOW);
             device_attentioned = device_listening = device_talking = 0;
         }
-
-        if (device_attentioned || force_frame_handshake)
-            set(DATA_HIGH);
-
-        wait_clock(0, 0);
+        wait_atn(0);
+        break;
     }
     while (atn(1) && !device_resetted);
 
+    printf("%sATN OFF%s\n", COLOR_CYAN, COLOR_RESET);
+
+    if (device_listening)
+        receive_bytes();
+    else if (device_talking)
+        send_bytes();
+
+    return;
+
+    end:
     printf("%sATN OFF%s\n", COLOR_CYAN, COLOR_RESET);
 }
 
@@ -160,7 +172,7 @@ void send_bytes() {
         set(CLOCK_LOW);    // Device is ready to send
         wait_data(0, 0);   // Computer is ready for data
 
-        if (data_buffer.length == 0) { // Empty stream
+        if (data_buffer.length == 0) {   // Empty stream
             char _localtime[LOCALTIME_STRLEN];
             get_localtime(_localtime);
             fprintf(stderr, "[%s] %sERROR: file not found%s\n", _localtime, COLOR_RED, COLOR_RESET);
@@ -236,7 +248,6 @@ void send_bytes() {
     set(CLOCK_LOW | DATA_LOW);
 
     end:
-    device_talked = 1;
 }
 
 void receive_bytes() {
@@ -248,22 +259,19 @@ void receive_bytes() {
 
     int _eoi = 0;
     do {
-        wait_clock(0, 0);   // Talker is ready to send
+        wait_clock(0, 0, 0);   // Talker is ready to send
         set(DATA_LOW);      // Listener is ready for data
         
-        int _timeout = 0;
         if (eoi()) {
             set(DATA_HIGH);
             microsleep(60);
             set(DATA_LOW);
             _eoi = 1;
-            _timeout = 60;
         }
 
-        wait_clock(1, _timeout);
-        data_buffer.string[data_buffer.length++] = get_byte();
+        wait_clock(1, 0, 0);
+        data_buffer.string[data_buffer.length++] = get_byte(0);
 
-        set(DATA_HIGH);   // Frame Handshake
         microsleep(100);
 
         #if DEBUG
@@ -273,8 +281,6 @@ void receive_bytes() {
     while (!_eoi);
 
     handle_received_bytes();
-
-    device_listened = 1;
 }
 
 void handle_received_bytes() {
@@ -345,27 +351,27 @@ void handle_dos_command() {
 void print_command(vic_byte command) {
     switch (command & 0xF0) {
         case (LISTEN & 0xF0):
-                printf("LISTEN %d -> ", (command & 0x0F));
-                break;
-            case (UNLISTEN & 0xF0):
-                printf("UNLISTEN -> ");
-                break;
-            case (TALK & 0xF0):
-                printf("TALK %d -> ", (command & 0x0F));
-                break;
-            case (UNTALK & 0xF0):
-                printf("UNTALK -> ");
-                break;
-            case (SECOND & 0xF0):
-                printf("SECOND %d -> ", (command & 0x0F));
-                break;
-            case (CLOSE & 0xF0):
-                printf("CLOSE %d -> ", (command & 0x0F));
-                break;
-            case (OPEN & 0xF0):
-                printf("OPEN %d -> ", (command & 0x0F));
-                break;
-            default:
-                printf("%sERROR%s UNKNOWN COMMAND: %X -> ", COLOR_RED, COLOR_RESET, command);; 
+            printf("LISTEN %d -> ", (command & 0x0F));
+            break;
+        case (UNLISTEN & 0xF0):
+            printf("UNLISTEN -> ");
+            break;
+        case (TALK & 0xF0):
+            printf("TALK %d -> ", (command & 0x0F));
+            break;
+        case (UNTALK & 0xF0):
+            printf("UNTALK -> ");
+            break;
+        case (SECOND & 0xF0):
+            printf("SECOND %d -> ", (command & 0x0F));
+            break;
+        case (CLOSE & 0xF0):
+            printf("CLOSE %d -> ", (command & 0x0F));
+            break;
+        case (OPEN & 0xF0):
+            printf("OPEN %d -> ", (command & 0x0F));
+            break;
+        default:
+            printf("%sERROR%s UNKNOWN COMMAND: %X -> ", COLOR_RED, COLOR_RESET, command);
     }
 }

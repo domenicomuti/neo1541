@@ -27,10 +27,10 @@
 int resetted();
 int atn(int value);
 void wait_atn(int value);
-int wait_clock(int value, int timeout);
+int wait_clock(int value, int timeout, int check_atn);
 int wait_data(int value, int timeout);
 void set(vic_byte value);
 int eoi();
-vic_byte get_byte();
+vic_byte get_byte(int check_atn);
 
 #endif

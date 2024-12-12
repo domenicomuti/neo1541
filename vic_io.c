@@ -41,7 +41,7 @@ void wait_atn(int value) {
     }
 }
 
-int wait_clock(int value, int timeout) {
+int wait_clock(int value, int timeout, int check_atn) {
     #if DEBUG
     printf("wc%d(%d) ", value, timeout);
     #endif
@@ -49,14 +49,21 @@ int wait_clock(int value, int timeout) {
     if (value) 
         value = 0x20;
     suseconds_t a = get_microsec();
-    while ((INB(addr + 1) & 0x20) == value) {
-        if ((timeout > 0) && ((get_microsec() - a) > timeout)) {
+    vic_byte in = INB(addr + 1);
+
+    while ((in & 0x20) == value) {
+        if (check_atn && ((in & 0x10) == 0x10)) {   // if check for atn low and atn is low
+            printf("EXIT ATN ");
+            return 1;
+        }
+        else if ((timeout > 0) && ((get_microsec() - a) > timeout)) {
             return 1;
         }
         else if (resetted()) {
             device_resetted = 1;
             return 1;
         }
+        in = INB(addr + 1);
     }
     return 0;
 }
@@ -72,7 +79,7 @@ int wait_data(int value, int timeout) {
     #ifdef __linux__
     suseconds_t a = get_microsec();
     while ((INB(addr + 1) & 0x40) == value) {
-        if ((timeout > 0) && ((get_microsec() - a) > (timeout))) {
+        if ((timeout > 0) && ((get_microsec() - a) > timeout)) {
             #if DEBUG
             printf("%sTIMEOUT %s%s\n", COLOR_RED, __func__, COLOR_RESET);
             #endif
@@ -166,7 +173,7 @@ int eoi() {
     return eoi;
 }
 
-vic_byte get_byte() {
+vic_byte get_byte(int check_atn) {
     #if DEBUG
     printf("gb ");
     #endif
@@ -174,44 +181,46 @@ vic_byte get_byte() {
     vic_byte byte = 0;
 
     // bit 1
-    wait_clock(0, 0); // 70 timeout
+    if (wait_clock(0, 0, check_atn)) return 0; // 70 timeout
     byte = (INB(addr + 1) & 0x40) >> 6;
-    wait_clock(1, 0); // 20 timeout
+    if (wait_clock(1, 0, check_atn)) return 0; // 20 timeout
 
     // bit 2
-    wait_clock(0, 0); // 70 timeout
+    if (wait_clock(0, 0, check_atn)) return 0; // 70 timeout
     byte |= (INB(addr + 1) & 0x40) >> 5;
-    wait_clock(1, 0); // 20 timeout
+    if (wait_clock(1, 0, check_atn)) return 0; // 20 timeout
 
     // bit 3
-    wait_clock(0, 0); // 70 timeout
+    if (wait_clock(0, 0, check_atn)) return 0; // 70 timeout
     byte |= (INB(addr + 1) & 0x40) >> 4;
-    wait_clock(1, 0); // 20 timeout
+    if (wait_clock(1, 0, check_atn)) return 0; // 20 timeout
 
     // bit 4
-    wait_clock(0, 0); // 70 timeout
+    if (wait_clock(0, 0, check_atn)) return 0; // 70 timeout
     byte |= (INB(addr + 1) & 0x40) >> 3;
-    wait_clock(1, 0); // 20 timeout
+    if (wait_clock(1, 0, check_atn)) return 0; // 20 timeout
 
     // bit 5
-    wait_clock(0, 0); // 70 timeout
+    if (wait_clock(0, 0, check_atn)) return 0; // 70 timeout
     byte |= (INB(addr + 1) & 0x40) >> 2;
-    wait_clock(1, 0); // 20 timeout
+    if (wait_clock(1, 0, check_atn)) return 0; // 20 timeout
     
     // bit 6
-    wait_clock(0, 0); // 70 timeout
+    if (wait_clock(0, 0, check_atn)) return 0; // 70 timeout
     byte |= (INB(addr + 1) & 0x40) >> 1;
-    wait_clock(1, 0); // 20 timeout
+    if (wait_clock(1, 0, check_atn)) return 0; // 20 timeout
 
     // bit 7
-    wait_clock(0, 0); // 70 timeout
+    if (wait_clock(0, 0, check_atn)) return 0; // 70 timeout
     byte |= (INB(addr + 1) & 0x40);
-    wait_clock(1, 0); // 20 timeout
+    if (wait_clock(1, 0, check_atn)) return 0; // 20 timeout
 
     // bit 8
-    wait_clock(0, 0); // 70 timeout
+    if (wait_clock(0, 0, check_atn)) return 0; // 70 timeout
     byte |= (INB(addr + 1) & 0x40) << 1;
-    wait_clock(1, 0); // 20 timeout
+    if (wait_clock(1, 0, check_atn)) return 0; // 20 timeout
+
+    set(DATA_HIGH);
 
     return byte;
 }
