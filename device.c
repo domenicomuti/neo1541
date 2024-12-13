@@ -53,8 +53,26 @@ void reset_device() {
 }
 
 void try_unfreeze() {
-    set(CLOCK_HIGH); microsleep(100); set(CLOCK_LOW);
-    //set(DATA_HIGH);  microsleep(1000); set(DATA_LOW);
+    int sleep = 100000;
+    microsleep(sleep);
+    set(CLOCK_HIGH);
+    microsleep(sleep);
+    set(CLOCK_LOW);
+
+    microsleep(sleep);
+    set(DATA_HIGH); 
+    microsleep(sleep);
+    set(DATA_LOW);
+
+    microsleep(sleep);
+    set(CLOCK_HIGH);
+    microsleep(sleep);
+    set(CLOCK_LOW);
+
+    microsleep(sleep);
+    set(DATA_HIGH); 
+    microsleep(sleep);
+    set(DATA_LOW);
 }
 
 void handle_atn() {
@@ -67,23 +85,29 @@ void handle_atn() {
     printf("[%s] %sATN ON%s -> ", _localtime, COLOR_CYAN, COLOR_RESET);
             
     set(CLOCK_LOW | DATA_HIGH);
-    if (wait_clock(1, 1000000, 1)) goto error;
+    if (wait_clock(1, 200, 1)) goto error;
 
     do {
-        if (wait_clock(0, 0, 1)) goto end;   // Talker is ready to send
-        set(DATA_LOW);                       // Listener is ready for data
+        if (wait_clock(0, 5000, 1)) goto end;   // Talker is ready to send
+        set(DATA_LOW);                          // Listener is ready for data
 
-        if (wait_clock(1, 0, 1)) goto error;
+        if (wait_clock(1, 100, 1)) goto error;
 
-        command = get_byte(1);
-        print_command(command);
+        vic_byte new_command = get_byte(1);
+        if (command == TALK && ((new_command & 0xF0) != SECOND)) {
+            command = new_command;
+            goto error;
+        }
+        command = new_command;
+
+        print_command();
 
         if (command == LISTEN) {
             device_attentioned = device_listening = 1;
             device_talking = 0;
             continue;
         }
-        else if((command == UNLISTEN) && device_listening) {
+        else if (command == UNLISTEN) {
             device_attentioned = device_listening = 0;
         }
         else if (command == TALK) {
@@ -91,7 +115,7 @@ void handle_atn() {
             device_listening = 0;
             continue;
         }
-        else if ((command == UNTALK) && device_talking) {
+        else if (command == UNTALK) {
             device_attentioned = device_talking = 0;
         }
         else if (((command & 0xF0) == OPEN) && device_attentioned) {
@@ -106,9 +130,9 @@ void handle_atn() {
         }
         else {
             error:
-            try_unfreeze();
             set(CLOCK_LOW | DATA_LOW);
             device_attentioned = device_listening = device_talking = 0;
+            try_unfreeze();
         }
         wait_atn(0);
         break;
@@ -137,6 +161,14 @@ void send_bytes() {
 
     write_data_buffer();
 
+    if (data_buffer.length == 0) {   // Empty stream
+        char _localtime[LOCALTIME_STRLEN];
+        get_localtime(_localtime);
+        fprintf(stderr, "[%s] %sERROR: file not found%s\n", _localtime, COLOR_RED, COLOR_RESET);
+        device_attentioned = device_talking = filename.length = 0;
+        goto end;
+    }
+
     vic_byte c;
 
     int i_file = 0;
@@ -148,7 +180,11 @@ void send_bytes() {
 
     do {
         #if DEBUG
-        printf("\n%s%d%s ", COLOR_WHITE, (i_file + 1), COLOR_RESET);
+        {
+            char _localtime[LOCALTIME_STRLEN];
+            get_localtime(_localtime);
+            printf("\n[%s] %s%d%s ", _localtime, COLOR_WHITE, (i_file + 1), COLOR_RESET);
+        }
         #endif
         
         if (resetted()) {
@@ -156,8 +192,6 @@ void send_bytes() {
             goto end;
         }
         else if (atn(1)) {
-            set(CLOCK_LOW | DATA_HIGH);
-            handle_atn();
             goto end;
         }
         else if (error) {
@@ -165,31 +199,21 @@ void send_bytes() {
             get_localtime(_localtime);
             fprintf(stderr, "[%s] %sERROR: can't send file %s\n", _localtime, COLOR_RED, COLOR_RESET);
             device_attentioned = device_talking = filename.length = 0;
-            set(CLOCK_LOW | DATA_LOW);
             goto end;
         }
         
         set(CLOCK_LOW);    // Device is ready to send
         wait_data(0, 0);   // Computer is ready for data
 
-        if (data_buffer.length == 0) {   // Empty stream
-            char _localtime[LOCALTIME_STRLEN];
-            get_localtime(_localtime);
-            fprintf(stderr, "[%s] %sERROR: file not found%s\n", _localtime, COLOR_RED, COLOR_RESET);
-            device_attentioned = device_talking = filename.length = 0;
-            set(CLOCK_LOW | DATA_LOW);
-            goto end;
-        }
-
-        int eoi = 0;
+        int _eoi = 0;
         
         c = data_buffer.string[i_file];
         i_file++;
 
         set_progress_bar(i_file * 100 / data_buffer.length);
 
-        if (i_file == data_buffer.length) {
-            eoi = 1;
+        if (i_file >= data_buffer.length) {
+            _eoi = 1;
             microsleep(200);
             wait_data(1, 0);
             wait_data(0, 0);
@@ -234,20 +258,32 @@ void send_bytes() {
 
         set(CLOCK_HIGH);
 
-        if (!wait_data(1, 1000)) {
-            i_file = data_buffer.length;
-            continue;
-        }
+        if (wait_data(1, 1000)) goto error;
 
         microsleep(100);   // Between bytes time
 
-        if (eoi) break;
+        if (_eoi) break;
     }
     while (1);
 
-    set(CLOCK_LOW | DATA_LOW);
-
     end:
+    #if DEBUG
+    printf("END ");
+    #endif
+
+    set(CLOCK_LOW | DATA_LOW);
+    return;
+
+    error:
+    #if DEBUG
+    {
+        char _localtime[LOCALTIME_STRLEN];
+        get_localtime(_localtime);
+        printf("[%s] ERR ", _localtime);
+    }
+    #endif
+    set(CLOCK_LOW | DATA_LOW);
+    try_unfreeze();
 }
 
 void receive_bytes() {
@@ -259,8 +295,11 @@ void receive_bytes() {
 
     int _eoi = 0;
     do {
-        wait_clock(0, 0, 0);   // Talker is ready to send
-        set(DATA_LOW);      // Listener is ready for data
+        #if DEBUG
+        printf("%s=>%s", COLOR_RED, COLOR_WHITE);
+        #endif
+        if (wait_clock(0, 2000, 0)) goto end;   // Talker is ready to send
+        set(DATA_LOW);                          // Listener is ready for data
         
         if (eoi()) {
             set(DATA_HIGH);
@@ -270,6 +309,7 @@ void receive_bytes() {
         }
 
         wait_clock(1, 0, 0);
+        // TODO: indietreggia length quando get_byte va in errore
         data_buffer.string[data_buffer.length++] = get_byte(0);
 
         microsleep(100);
@@ -281,6 +321,8 @@ void receive_bytes() {
     while (!_eoi);
 
     handle_received_bytes();
+
+    end:
 }
 
 void handle_received_bytes() {
@@ -348,7 +390,7 @@ void handle_dos_command() {
     // TODO
 }
 
-void print_command(vic_byte command) {
+void print_command() {
     switch (command & 0xF0) {
         case (LISTEN & 0xF0):
             printf("LISTEN %d -> ", (command & 0x0F));

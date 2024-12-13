@@ -46,14 +46,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    struct sched_param _sched_param;
+    /*struct sched_param _sched_param;
     _sched_param.sched_priority = 99;
-    sched_setscheduler(0, SCHED_FIFO, &_sched_param);
+    sched_setscheduler(0, SCHED_RR, &_sched_param);*/
 
-    cpu_set_t my_set;
+    /*cpu_set_t my_set;
     CPU_ZERO(&my_set);
     CPU_SET(3, &my_set);
-    sched_setaffinity(0, sizeof(cpu_set_t), &my_set);
+    sched_setaffinity(0, sizeof(cpu_set_t), &my_set);*/
 
     #elif _WIN32
     // TODO: CHECK ADMINISTRATOR MODE ?

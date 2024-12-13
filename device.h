@@ -18,6 +18,6 @@ void send_bytes();
 void receive_bytes();
 void handle_received_bytes();
 void handle_dos_command();
-void print_command(vic_byte command);
+void print_command();
 
 #endif
