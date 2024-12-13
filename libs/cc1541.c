@@ -757,7 +757,7 @@ reverse_print_off(void)
 
 /* Prints a PETSCII character */
 static void
-putp(unsigned char petscii, FILE *file)
+_putp(unsigned char petscii, FILE *file)
 {
     if (unicode) {
         int u;
@@ -825,7 +825,7 @@ print_dirfilename(unsigned char* pfilename)
                 putc(' ', stdout);
             }
         } else {
-            putp(c, stdout);
+            _putp(c, stdout);
         }
     }
     if (!ended) {
@@ -844,7 +844,7 @@ print_filename(FILE *file, unsigned char* pfilename)
         if (pfilename[pos] == FILENAMEEMPTYCHAR) {
             break;
         }
-        putp(pfilename[pos], file);
+        _putp(pfilename[pos], file);
     }
     putc('\"', file);
 }

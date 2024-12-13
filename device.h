@@ -13,9 +13,10 @@ void initialize_buffers();
 void free_buffers();
 
 void reset_device();
+void try_unfreeze();
 void handle_atn();
-void send_bytes();
-void receive_bytes();
+void download_bytes();
+void upload_bytes();
 void handle_received_bytes();
 void handle_dos_command();
 void print_command();

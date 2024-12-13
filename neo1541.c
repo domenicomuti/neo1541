@@ -1,17 +1,8 @@
-#define basename ciao
-#define _GNU_SOURCE
-
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
 #include <dirent.h>
-
-#ifdef __linux__
-#include <sched.h>
-#endif
-
 #include "constants.h"
 #include "timing.h"
 #include "display.h"
@@ -34,26 +25,48 @@ extern char disk_path[PATH_MAX];
 extern LARGE_INTEGER lpFrequency;
 #endif
 
+
+int screen_width;
+int screen_height;
+
+extern WINDOW *header_window;
+extern WINDOW *log_window;
+
 int main(int argc, char *argv[]) {
+
+    
+    //cbreak();
+    //noecho();
+
+
+    /*screen_width = getmaxx(stdscr);
+    screen_height = getmaxy(stdscr);*/
+
+    init_screen();
+
+
+
+
+
+    //refresh();
+    //wrefresh(header_window);
+    //wrefresh(log_window);
+
+
+    //delwin(header);
+    //delwin(log_window);
+
+
 
     //fclose(stdout);
 
     #ifdef __linux__
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
-            fprintf(stderr, "ERROR: You must be root\n");
+            wprintw(log_window, "ERROR: You must be root\n");
             exit(EXIT_FAILURE);
         }
     }
-
-    /*struct sched_param _sched_param;
-    _sched_param.sched_priority = 99;
-    sched_setscheduler(0, SCHED_RR, &_sched_param);*/
-
-    /*cpu_set_t my_set;
-    CPU_ZERO(&my_set);
-    CPU_SET(3, &my_set);
-    sched_setaffinity(0, sizeof(cpu_set_t), &my_set);*/
 
     #elif _WIN32
     // TODO: CHECK ADMINISTRATOR MODE ?
@@ -65,24 +78,21 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--disk") == 0) {
             if (argc < i + 2) {
-                fprintf(stderr, "ERROR: Error parsing argument for --disk\n");
+                wprintw(log_window, "ERROR: Error parsing argument for --disk\n");
                 exit(EXIT_FAILURE);
             }
             _disk_path = argv[i + 1];
         }
     }
 
-    /*_disk_path = calloc(35, sizeof(char));
-    strcpy(_disk_path, "image_examples");*/
-
     trim(_disk_path);
     if (realpath(_disk_path, disk_path) == NULL) {
         if (errno == ENOENT)
-            fprintf(stderr, "ERROR: file or directory %s doesn't exists\n", _disk_path);
+            wprintw(log_window, "ERROR: file or directory %s doesn't exists\n", _disk_path);
         else if (errno == EACCES)
-            fprintf(stderr, "ERROR: access to file or directory %s is not allowed\n", _disk_path);
+            wprintw(log_window, "ERROR: access to file or directory %s is not allowed\n", _disk_path);
         else
-            fprintf(stderr, "ERROR: can't open file or directory %s (errno %d)\n", _disk_path, errno);
+            wprintw(log_window, "ERROR: can't open file or directory %s (errno %d)\n", _disk_path, errno);
         exit(EXIT_FAILURE);
     }
     DIR *dir;
@@ -100,21 +110,19 @@ int main(int argc, char *argv[]) {
     initialize_buffers();
     get_disk_info();
 
+    print_header(0, 0);
+    wrefresh(header_window);
+
     // TODO: VERIFICARE SE SU WIN FUNZIONA REALPATH (rimuove automaticamente final slash)
 
     while (1) {
         OUTB(0xC0, addr + 2); // Reset PCR
-
-        while (resetted()) microsleep(1000);
-
         set(CLOCK_LOW | DATA_LOW);   // Release clock and data line
-
         device_resetted = _resetted_message_displayed = 0;
-        
         wait_atn(0);
         char _localtime[LOCALTIME_STRLEN];
         get_localtime(_localtime);
-        printf("[%s] %sDEVICE WAITING FOR ATN%s\n", _localtime, COLOR_CYAN, COLOR_RESET);
+        wprintw(log_window, "[%s] DEVICE WAITING FOR ATN\n", _localtime);
 
         while (1) {
             if (atn(1))
@@ -124,10 +132,13 @@ int main(int argc, char *argv[]) {
                 reset_device();
                 break;
             }
+
+            wrefresh(log_window);
         }
     }
 
     free_buffers();
+    endwin();
 
     // TODO: catch ctrl + c
     printf("BYE");

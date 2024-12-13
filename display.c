@@ -6,16 +6,57 @@ char _localtime[LOCALTIME_STRLEN];
 static int _last_percent = -1;
 #endif
 
+WINDOW *header_window;
+WINDOW *log_window;
+
+void init_screen() {
+    setlocale(LC_ALL, "");
+    initscr();
+    start_color();
+
+    header_window = newwin(7, 0, 0, 0);
+    log_window = newwin(0, 0, 8, 0);
+
+    if (COLORS == 8) {
+        init_pair(1, COLOR_RED, 0);
+        init_pair(2, COLOR_RED, 0);
+        init_pair(3, COLOR_YELLOW, 0);
+        init_pair(4, COLOR_YELLOW, 0);
+        init_pair(5, COLOR_GREEN, 0);
+        init_pair(6, COLOR_GREEN, 0);
+        init_pair(7, COLOR_CYAN, 0);
+    }
+    else if (COLORS == 256) {
+        init_pair(1, 160, 0);
+        init_pair(2, 166, 0);
+        init_pair(3, 172, 0);
+        init_pair(4, 178, 0);
+        init_pair(5, 34, 0);
+        init_pair(6, 28, 0);
+        init_pair(7, 27, 0);
+    }
+}
+
+void print_header(int i, int direction) {
+    wattron(header_window, COLOR_PAIR(direction ? (((0 + i) % 7) + 1) : ((( 7 - i) % 7) + 1)));   mvwprintw(header_window, 0, 0, "░▒█████████▒░  ░▒██████████▒░  ░▒████████▒░     ░▒███▒░ ░▒██████████▒░ ░▒███▒  ▒███▒░    ░▒███▒░\n");
+    wattron(header_window, COLOR_PAIR(direction ? (((1 + i) % 7) + 1) : ((( 8 - i) % 7) + 1)));     wprintw(header_window,       "░▒███▒  ▒███▒░ ░▒███▒░        ░▒███▒  ▒███▒░ ░▒██████▒░ ░▒███▒░        ░▒███▒  ▒███▒░ ░▒██████▒░\n");
+    wattron(header_window, COLOR_PAIR(direction ? (((2 + i) % 7) + 1) : ((( 9 - i) % 7) + 1)));     wprintw(header_window,       "░▒███▒  ▒███▒░ ░▒███▒░        ░▒███▒  ▒███▒░    ░▒███▒░ ░▒███▒░        ░▒███▒  ▒███▒░    ░▒███▒░\n");
+    wattron(header_window, COLOR_PAIR(direction ? (((3 + i) % 7) + 1) : (((10 - i) % 7) + 1)));     wprintw(header_window,       "░▒███▒  ▒███▒░ ░▒████████▒░   ░▒███▒  ▒███▒░    ░▒███▒░ ░▒█████████▒░  ░▒██████████▒░    ░▒███▒░\n");
+    wattron(header_window, COLOR_PAIR(direction ? (((4 + i) % 7) + 1) : (((11 - i) % 7) + 1)));     wprintw(header_window,       "░▒███▒  ▒███▒░ ░▒███▒░        ░▒███▒  ▒███▒░    ░▒███▒░        ░▒███▒░        ░▒███▒░    ░▒███▒░\n");
+    wattron(header_window, COLOR_PAIR(direction ? (((5 + i) % 7) + 1) : (((12 - i) % 7) + 1)));     wprintw(header_window,       "░▒███▒  ▒███▒░ ░▒███▒░        ░▒███▒  ▒███▒░    ░▒███▒░        ░▒███▒░        ░▒███▒░    ░▒███▒░\n");
+    wattron(header_window, COLOR_PAIR(direction ? (((6 + i) % 7) + 1) : (((13 - i) % 7) + 1)));     wprintw(header_window,       "░▒███▒  ▒███▒░ ░▒██████████▒░  ░▒████████▒░     ░▒███▒░ ░▒█████████▒░         ░▒███▒░    ░▒███▒░\n");
+}
+
 void create_progress_bar() {
 #if !DEBUG
     _localtime[0] = '\0';
     _last_percent = -1;
-    printf("\n");
+    wprintw(log_window, "\n");
 #endif
 }
 
 void set_progress_bar(int percent) {
-#if !DEBUG
+    /*#if !DEBUG
     if (device_resetted || _last_percent == percent)
         return;
     _last_percent = percent;
@@ -38,8 +79,8 @@ void set_progress_bar(int percent) {
     CURSOR_UP(1);
     if (_localtime[0] == '\0')
         get_localtime(_localtime);
-    printf("[%s] %s\n", _localtime, progress_bar);
+    wprintw(log_window, "[%s] %s\n", _localtime, progress_bar);
 
     free(progress_bar);
-#endif
+    #endif*/
 }

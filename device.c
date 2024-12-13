@@ -17,6 +17,11 @@ vic_string data_buffer;
 vic_string filename;
 char _filename_ascii[NAME_MAX + 1];
 
+extern WINDOW *header_window;
+extern WINDOW *log_window;
+
+int header_i = 0;
+
 #ifdef _WIN64
 extern LARGE_INTEGER lpFrequency;
 #endif
@@ -24,7 +29,7 @@ extern LARGE_INTEGER lpFrequency;
 void initialize_buffers() {
     vic_byte *_data_buffer = malloc(MAX_DATA_BUFFER_SIZE * sizeof(vic_byte));
     if (_data_buffer == NULL) {
-        fprintf(stderr, "ERROR: Memory allocation error\n");
+        wprintw(log_window, "ERROR: Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     data_buffer.string = _data_buffer;
@@ -32,7 +37,7 @@ void initialize_buffers() {
 
     vic_byte *_filename = malloc(FILENAMEMAXSIZE * sizeof(vic_byte));
     if (_filename == NULL) {
-        fprintf(stderr, "ERROR: Memory allocation error\n");
+        wprintw(log_window, "ERROR: Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     filename.string = _filename;
@@ -46,7 +51,7 @@ void free_buffers() {
 
 void reset_device() {
     #if DEBUG
-    printf("%s\n", __func__);
+    wprintw(log_window, "%s\n", __func__);
     #endif
 
     device_resetted = device_attentioned = device_listening = device_talking = 0;
@@ -77,12 +82,12 @@ void try_unfreeze() {
 
 void handle_atn() {
     #if DEBUG
-    printf("\n%s\n", __func__);
+    wprintw(log_window, "\n%s\n", __func__);
     #endif
 
     char _localtime[LOCALTIME_STRLEN];
     get_localtime(_localtime);
-    printf("[%s] %sATN ON%s -> ", _localtime, COLOR_CYAN, COLOR_RESET);
+    wprintw(log_window, "[%s] ATN ON -> ", _localtime);
             
     set(CLOCK_LOW | DATA_HIGH);
     if (wait_clock(1, 200, 1)) goto error;
@@ -139,22 +144,70 @@ void handle_atn() {
     }
     while (atn(1) && !device_resetted);
 
-    printf("%sATN OFF%s\n", COLOR_CYAN, COLOR_RESET);
+    wprintw(log_window, "ATN OFF\n");
 
     if (device_listening)
-        receive_bytes();
+        download_bytes();
     else if (device_talking)
-        send_bytes();
+        upload_bytes();
 
     return;
 
     end:
-    printf("%sATN OFF%s\n", COLOR_CYAN, COLOR_RESET);
+    wprintw(log_window, "ATN OFF\n");
 }
 
-void send_bytes() {
+void download_bytes() {
     #if DEBUG
-    printf("sb ");
+    wprintw(log_window, "%s\n", __func__);
+    #endif
+
+    data_buffer.length = 0;
+
+    int _eoi = 0;
+    int header_j = 0;
+    do {
+        header_i %= 7;
+        header_j %= 64;
+        if (header_j == 0) {
+            print_header(header_i++, 0);
+            wrefresh(header_window);
+        }
+        header_j++;
+
+        #if DEBUG
+        wprintw(log_window, "=>");
+        #endif
+        if (wait_clock(0, 2000, 0)) goto end;   // Talker is ready to send
+        set(DATA_LOW);                          // Listener is ready for data
+        
+        if (eoi()) {
+            set(DATA_HIGH);
+            microsleep(60);
+            set(DATA_LOW);
+            _eoi = 1;
+        }
+
+        wait_clock(1, 0, 0);
+        // TODO: indietreggia length quando get_byte va in errore
+        data_buffer.string[data_buffer.length++] = get_byte(0);
+
+        microsleep(100);
+
+        #if DEBUG
+        wprintw(log_window, "\n");
+        #endif
+    }
+    while (!_eoi);
+
+    handle_received_bytes();
+
+    end:
+}
+
+void upload_bytes() {
+    #if DEBUG
+    wprintw(log_window, "sb ");
     #endif
 
     set(DATA_LOW | CLOCK_HIGH);
@@ -164,7 +217,7 @@ void send_bytes() {
     if (data_buffer.length == 0) {   // Empty stream
         char _localtime[LOCALTIME_STRLEN];
         get_localtime(_localtime);
-        fprintf(stderr, "[%s] %sERROR: file not found%s\n", _localtime, COLOR_RED, COLOR_RESET);
+        wprintw(log_window, "[%s] ERROR: file not found\n", _localtime);
         device_attentioned = device_talking = filename.length = 0;
         goto end;
     }
@@ -178,12 +231,21 @@ void send_bytes() {
 
     microsleep(80);
 
+    int header_j = 0;
     do {
+        header_i %= 7;
+        header_j %= 64;
+        if (header_j == 0) {
+            print_header(header_i++, 1);
+            wrefresh(header_window);
+        }
+        header_j++;
+
         #if DEBUG
         {
             char _localtime[LOCALTIME_STRLEN];
             get_localtime(_localtime);
-            printf("\n[%s] %s%d%s ", _localtime, COLOR_WHITE, (i_file + 1), COLOR_RESET);
+            wprintw(log_window, "\n[%s] %d ", _localtime, (i_file + 1));
         }
         #endif
         
@@ -197,7 +259,7 @@ void send_bytes() {
         else if (error) {
             char _localtime[LOCALTIME_STRLEN];
             get_localtime(_localtime);
-            fprintf(stderr, "[%s] %sERROR: can't send file %s\n", _localtime, COLOR_RED, COLOR_RESET);
+            wprintw(log_window, "[%s] ERROR: can't send file \n", _localtime);
             device_attentioned = device_talking = filename.length = 0;
             goto end;
         }
@@ -214,7 +276,7 @@ void send_bytes() {
 
         if (i_file >= data_buffer.length) {
             _eoi = 1;
-            microsleep(200);
+            microsleep(255);
             wait_data(1, 0);
             wait_data(0, 0);
             microsleep(30);
@@ -226,11 +288,11 @@ void send_bytes() {
             set(CLOCK_HIGH);
             a = get_microsec();
             set(((~c >> i) & 1) ? DATA_HIGH : DATA_LOW);
-            while ((get_microsec() - a) < 70) {} // Bit setup
+            while ((get_microsec() - a) < 70) {}   // Bit setup
 
             set(CLOCK_LOW);
             a = get_microsec();
-            while ((get_microsec() - a) < 20) {} // Data valid (20us for the VIC20, 60us for the Commodore 64)
+            while ((get_microsec() - a) < 20) {}   // Data valid (20us for the VIC20, 60us for the Commodore 64)
             set(DATA_LOW);
         }
         #elif _WIN64
@@ -268,61 +330,17 @@ void send_bytes() {
 
     end:
     #if DEBUG
-    printf("END ");
+    wprintw(log_window, "END ");
     #endif
-
     set(CLOCK_LOW | DATA_LOW);
     return;
 
     error:
     #if DEBUG
-    {
-        char _localtime[LOCALTIME_STRLEN];
-        get_localtime(_localtime);
-        printf("[%s] ERR ", _localtime);
-    }
+    wprintw(log_window, "ERR ");
     #endif
     set(CLOCK_LOW | DATA_LOW);
     try_unfreeze();
-}
-
-void receive_bytes() {
-    #if DEBUG
-    printf("%s\n", __func__);
-    #endif
-
-    data_buffer.length = 0;
-
-    int _eoi = 0;
-    do {
-        #if DEBUG
-        printf("%s=>%s", COLOR_RED, COLOR_WHITE);
-        #endif
-        if (wait_clock(0, 2000, 0)) goto end;   // Talker is ready to send
-        set(DATA_LOW);                          // Listener is ready for data
-        
-        if (eoi()) {
-            set(DATA_HIGH);
-            microsleep(60);
-            set(DATA_LOW);
-            _eoi = 1;
-        }
-
-        wait_clock(1, 0, 0);
-        // TODO: indietreggia length quando get_byte va in errore
-        data_buffer.string[data_buffer.length++] = get_byte(0);
-
-        microsleep(100);
-
-        #if DEBUG
-        printf("\n");
-        #endif
-    }
-    while (!_eoi);
-
-    handle_received_bytes();
-
-    end:
 }
 
 void handle_received_bytes() {
@@ -337,7 +355,7 @@ void handle_received_bytes() {
 
         char _localtime[LOCALTIME_STRLEN];
         get_localtime(_localtime);
-        printf("[%s] %s%s:%s \"%s\"\n", _localtime, COLOR_YELLOW, (channel <= 1 ? "FILENAME" : "COMMAND"), COLOR_RESET, _filename_ascii);
+        wprintw(log_window, "[%s] %s: \"%s\"\n", _localtime, (channel <= 1 ? "FILENAME" : "COMMAND"), _filename_ascii);
 
         if (channel == 15)
             handle_dos_command();
@@ -354,27 +372,27 @@ void handle_received_bytes() {
 
                 FILE* fptr = fopen(_filepath, "wb");
                 if (fptr == NULL) {
-                    fprintf(stderr, "%sERROR: can't open file %s (errno %d)%s\n", COLOR_RED, _filepath, errno, COLOR_RESET);
+                    wprintw(log_window, "ERROR: can't open file %s (errno %d)\n", _filepath, errno);
                     // TODO: gestire il caso in cui si va a scrivere una directory (errno 21)
-                    goto exit_receive_bytes;
+                    goto exit_download_bytes;
                 }
 
                 if (fwrite(data_buffer.string, data_buffer.length, 1, fptr) == 0) {
-                    fprintf(stderr, "%sERROR: can't write file (errno %d)%s\n", COLOR_RED, errno, COLOR_RESET);
-                    goto exit_receive_bytes;
+                    wprintw(log_window, "ERROR: can't write file (errno %d)\n", errno);
+                    goto exit_download_bytes;
                 }
 
                 char _localtime[LOCALTIME_STRLEN];
                 get_localtime(_localtime);
-                printf("[%s] %sSAVED:%s %s\n", _localtime, COLOR_YELLOW, COLOR_RESET, _filepath);
+                wprintw(log_window, "[%s] SAVED: %s\n", _localtime, _filepath);
 
-            exit_receive_bytes:
+            exit_download_bytes:
                 fclose(fptr);
             }
             else if (disk_info.type == DISK_IMAGE) {
                 char _localtime[LOCALTIME_STRLEN];
                 get_localtime(_localtime);
-                printf("[%s] %sSAVED:%s %s <- %s\n", _localtime, COLOR_YELLOW, COLOR_RESET, disk_path, _filename_ascii);
+                wprintw(log_window, "[%s] SAVED: %s <- %s\n", _localtime, disk_path, _filename_ascii);
                 save_file_to_image();
             }
         }
@@ -393,27 +411,27 @@ void handle_dos_command() {
 void print_command() {
     switch (command & 0xF0) {
         case (LISTEN & 0xF0):
-            printf("LISTEN %d -> ", (command & 0x0F));
+            wprintw(log_window, "LISTEN %d -> ", (command & 0x0F));
             break;
         case (UNLISTEN & 0xF0):
-            printf("UNLISTEN -> ");
+            wprintw(log_window, "UNLISTEN -> ");
             break;
         case (TALK & 0xF0):
-            printf("TALK %d -> ", (command & 0x0F));
+            wprintw(log_window, "TALK %d -> ", (command & 0x0F));
             break;
         case (UNTALK & 0xF0):
-            printf("UNTALK -> ");
+            wprintw(log_window, "UNTALK -> ");
             break;
         case (SECOND & 0xF0):
-            printf("SECOND %d -> ", (command & 0x0F));
+            wprintw(log_window, "SECOND %d -> ", (command & 0x0F));
             break;
         case (CLOSE & 0xF0):
-            printf("CLOSE %d -> ", (command & 0x0F));
+            wprintw(log_window, "CLOSE %d -> ", (command & 0x0F));
             break;
         case (OPEN & 0xF0):
-            printf("OPEN %d -> ", (command & 0x0F));
+            wprintw(log_window, "OPEN %d -> ", (command & 0x0F));
             break;
         default:
-            printf("%sERROR%s UNKNOWN COMMAND: %X -> ", COLOR_RED, COLOR_RESET, command);
+            wprintw(log_window, "ERROR UNKNOWN COMMAND: %X -> ", command);
     }
 }

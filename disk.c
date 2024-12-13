@@ -5,10 +5,13 @@ struct vic_disk_info disk_info;
 extern vic_string data_buffer;
 extern vic_string filename;
 
+extern WINDOW *header_window;
+extern WINDOW *log_window;
+
 unsigned short get_file_blocks(char *path, char *_filename, vic_size *filesize) {
     char *_path = calloc(strlen(path) + strlen(_filename) + 2, sizeof(char));
     if (_path == NULL) {
-        fprintf(stderr, "ERROR: Memory allocation error\n");
+        wprintw(log_window, "ERROR: Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     strcpy(_path, path);
@@ -107,7 +110,7 @@ void get_disk_info() {
             if (f == NULL) {
                 f = malloc(sizeof *f);
                 if (f == NULL) {
-                    fprintf(stderr, "ERROR: Memory allocation error\n");
+                    wprintw(log_window, "ERROR: Memory allocation error\n");
                     exit(EXIT_FAILURE);
                 }
                 strcpy(f->filename, _filename);
@@ -166,7 +169,7 @@ void save_file_to_image() {
 
 void directory_listing() {
 #if DEBUG
-    printf("%s\n", __func__);
+    wprintw(log_window, "%s\n", __func__);
 #endif
     data_buffer.length = filename.length = 0;
 
@@ -248,7 +251,7 @@ void directory_listing() {
 
 void write_data_buffer() {
 #if DEBUG
-    printf("%s\n", __func__);
+    wprintw(log_window, "%s\n", __func__);
 #endif
     data_buffer.length = 0;
 
@@ -257,7 +260,7 @@ void write_data_buffer() {
     if (vic_string_equal_string(&filename, "$")) {
         char _localtime[30];
         get_localtime(_localtime);
-        printf("[%s] %sLIST FILES:%s %s\n", _localtime, COLOR_YELLOW, COLOR_RESET, disk_path);
+        wprintw(log_window, "[%s] LIST FILES: %s\n", _localtime, disk_path);
         directory_listing();
     }
     else if (vic_string_equal_string(&filename, "..")) {
@@ -282,7 +285,7 @@ void write_data_buffer() {
         _filename[filename.length] = '\0';
         char _localtime[30];
         get_localtime(_localtime);
-        printf("[%s] %sSENDING FILE:%s %s -> %s\n", _localtime, COLOR_YELLOW, COLOR_RESET, disk_path, _filename);
+        wprintw(log_window, "[%s] SENDING FILE: %s -> %s\n", _localtime, disk_path, _filename);
         extract_file_from_image();
         if (data_buffer.length == 0)
             return;
@@ -332,7 +335,7 @@ void write_data_buffer() {
             fread(data_buffer.string, data_buffer.length, 1, fptr);
             char _localtime[30];
             get_localtime(_localtime);
-            printf("[%s] %sSENDING FILE:%s %s (%ld bytes)\n", _localtime, COLOR_YELLOW, COLOR_RESET, image_path, data_buffer.length);
+            wprintw(log_window, "[%s] SENDING FILE: %s (%ld bytes)\n", _localtime, image_path, data_buffer.length);
             fclose(fptr);
         }
     }
