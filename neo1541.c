@@ -42,10 +42,7 @@ int main(int argc, char *argv[]) {
     /*screen_width = getmaxx(stdscr);
     screen_height = getmaxy(stdscr);*/
 
-    init_screen();
-
-
-
+    init_gui();
 
 
     //refresh();
@@ -109,7 +106,7 @@ int main(int argc, char *argv[]) {
 
     initialize_buffers();
     get_disk_info();
-
+    
     print_header(0, 0);
     wrefresh(header_window);
 
@@ -120,6 +117,7 @@ int main(int argc, char *argv[]) {
         set(CLOCK_LOW | DATA_LOW);   // Release clock and data line
         device_resetted = _resetted_message_displayed = 0;
         wait_atn(0);
+        
         char _localtime[LOCALTIME_STRLEN];
         get_localtime(_localtime);
         wprintw(log_window, "[%s] DEVICE WAITING FOR ATN\n", _localtime);
@@ -132,7 +130,6 @@ int main(int argc, char *argv[]) {
                 reset_device();
                 break;
             }
-
             wrefresh(log_window);
         }
     }

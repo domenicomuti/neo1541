@@ -10,9 +10,8 @@
 #include "timing.h"
 #include "math.h"
 
-void init_screen();
+void init_gui();
 void print_header(int i, int direction);
-void create_progress_bar();
 void set_progress_bar(int percent);
 
 #endif

@@ -87,7 +87,11 @@ void handle_atn() {
 
     char _localtime[LOCALTIME_STRLEN];
     get_localtime(_localtime);
-    wprintw(log_window, "[%s] ATN ON -> ", _localtime);
+    wprintw(log_window, "[%s] ", _localtime);
+    wattron(log_window, COLOR_PAIR(5));
+    wprintw(log_window, "ATN ON");
+    wattroff(log_window, COLOR_PAIR(5));
+    wprintw(log_window, " -> ");
             
     set(CLOCK_LOW | DATA_HIGH);
     if (wait_clock(1, 200, 1)) goto error;
@@ -144,7 +148,9 @@ void handle_atn() {
     }
     while (atn(1) && !device_resetted);
 
+    wattron(log_window, COLOR_PAIR(5));
     wprintw(log_window, "ATN OFF\n");
+    wattroff(log_window, COLOR_PAIR(5));
 
     if (device_listening)
         download_bytes();
@@ -154,7 +160,9 @@ void handle_atn() {
     return;
 
     end:
+    wattron(log_window, COLOR_PAIR(5));
     wprintw(log_window, "ATN OFF\n");
+    wattroff(log_window, COLOR_PAIR(5));
 }
 
 void download_bytes() {
@@ -226,8 +234,6 @@ void upload_bytes() {
 
     int i_file = 0;
     int error = 0;
-
-    create_progress_bar();
 
     microsleep(80);
 

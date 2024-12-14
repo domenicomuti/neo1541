@@ -286,6 +286,7 @@ void write_data_buffer() {
         char _localtime[30];
         get_localtime(_localtime);
         wprintw(log_window, "[%s] SENDING FILE: %s -> %s\n", _localtime, disk_path, _filename);
+        wrefresh(log_window);
         extract_file_from_image();
         if (data_buffer.length == 0)
             return;
@@ -336,6 +337,7 @@ void write_data_buffer() {
             char _localtime[30];
             get_localtime(_localtime);
             wprintw(log_window, "[%s] SENDING FILE: %s (%ld bytes)\n", _localtime, image_path, data_buffer.length);
+            wrefresh(log_window);
             fclose(fptr);
         }
     }
