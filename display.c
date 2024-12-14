@@ -1,10 +1,7 @@
 #include "display.h"
 
-#if !DEBUG
 extern int device_resetted;
-char _localtime[LOCALTIME_STRLEN];
 static int _last_percent = -1;
-#endif
 
 WINDOW *header_window;
 WINDOW *progress_bar_window;
@@ -17,9 +14,9 @@ void init_gui() {
     noecho();
     start_color();
 
-          header_window = newwin(8, 0, 0 , 0);
+    header_window       = newwin(8, 0, 0 , 0);
     progress_bar_window = newwin(1, 0, 9 , 0);
-             log_window = newwin(0, 0, 10, 0);
+    log_window          = newwin(0, 0, 10, 0);
 
     idlok(log_window, true);
     scrollok(log_window, true);
@@ -48,6 +45,13 @@ void init_gui() {
     curs_set(0);
 }
 
+void destroy_gui() {
+    delwin(header_window);
+    delwin(progress_bar_window);
+    delwin(log_window);
+    endwin();
+}
+
 void print_header(int i, int direction) {
     wattron(header_window, COLOR_PAIR(direction ? (((0 + i) % 7) + 1) : ((( 7 - i) % 7) + 1)));   mvwprintw(header_window, 1, 0, "  ░▒█████████▒░  ░▒██████████▒░  ░▒████████▒░     ░▒███▒░ ░▒██████████▒░ ░▒███▒  ▒███▒░    ░▒███▒░\n");
     wattron(header_window, COLOR_PAIR(direction ? (((1 + i) % 7) + 1) : ((( 8 - i) % 7) + 1)));     wprintw(header_window,       "  ░▒███▒  ▒███▒░ ░▒███▒░        ░▒███▒  ▒███▒░ ░▒██████▒░ ░▒███▒░        ░▒███▒  ▒███▒░ ░▒██████▒░\n");
@@ -56,6 +60,21 @@ void print_header(int i, int direction) {
     wattron(header_window, COLOR_PAIR(direction ? (((4 + i) % 7) + 1) : (((11 - i) % 7) + 1)));     wprintw(header_window,       "  ░▒███▒  ▒███▒░ ░▒███▒░        ░▒███▒  ▒███▒░    ░▒███▒░        ░▒███▒░        ░▒███▒░    ░▒███▒░\n");
     wattron(header_window, COLOR_PAIR(direction ? (((5 + i) % 7) + 1) : (((12 - i) % 7) + 1)));     wprintw(header_window,       "  ░▒███▒  ▒███▒░ ░▒███▒░        ░▒███▒  ▒███▒░    ░▒███▒░        ░▒███▒░        ░▒███▒░    ░▒███▒░\n");
     wattron(header_window, COLOR_PAIR(direction ? (((6 + i) % 7) + 1) : (((13 - i) % 7) + 1)));     wprintw(header_window,       "  ░▒███▒  ▒███▒░ ░▒██████████▒░  ░▒████████▒░     ░▒███▒░ ░▒█████████▒░         ░▒███▒░    ░▒███▒░\n");
+}
+
+void print_log(char *format, int color, int refresh, ...) {
+    char _localtime[LOCALTIME_STRLEN];
+    get_localtime(_localtime);
+    wprintw(log_window, "[%s] ", _localtime);
+
+    va_list va;
+    va_start(va, refresh);
+    wattron(log_window, COLOR_PAIR(color));
+    vw_printw(log_window, format, va);
+    wattroff(log_window, COLOR_PAIR(color));
+
+    if (refresh)
+        wrefresh(log_window);
 }
 
 void set_progress_bar(int percent) {

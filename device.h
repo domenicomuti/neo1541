@@ -9,7 +9,7 @@
 #include "vic_io.h"
 #include "disk.h"
 
-void initialize_buffers();
+void init_buffers();
 void free_buffers();
 
 void reset_device();

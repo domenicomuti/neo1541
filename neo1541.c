@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <dirent.h>
+
 #include "constants.h"
 #include "timing.h"
 #include "display.h"
@@ -15,7 +16,7 @@ extern int device_attentioned;
 extern int device_listening;
 extern int device_talking;
 
-extern int _resetted_message_displayed;
+int resetted_message_displayed = 0;
 
 extern int addr;
 
@@ -25,42 +26,15 @@ extern char disk_path[PATH_MAX];
 extern LARGE_INTEGER lpFrequency;
 #endif
 
-
-int screen_width;
-int screen_height;
-
 extern WINDOW *header_window;
 extern WINDOW *log_window;
 
 int main(int argc, char *argv[]) {
 
-    
-    //cbreak();
-    //noecho();
-
-
-    /*screen_width = getmaxx(stdscr);
-    screen_height = getmaxy(stdscr);*/
-
-    init_gui();
-
-
-    //refresh();
-    //wrefresh(header_window);
-    //wrefresh(log_window);
-
-
-    //delwin(header);
-    //delwin(log_window);
-
-
-
-    //fclose(stdout);
-
     #ifdef __linux__
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
-            wprintw(log_window, "ERROR: You must be root\n");
+            printf("ERROR: You must be root\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -75,7 +49,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--disk") == 0) {
             if (argc < i + 2) {
-                wprintw(log_window, "ERROR: Error parsing argument for --disk\n");
+                printf("ERROR: Error parsing argument for --disk\n");
                 exit(EXIT_FAILURE);
             }
             _disk_path = argv[i + 1];
@@ -85,13 +59,14 @@ int main(int argc, char *argv[]) {
     trim(_disk_path);
     if (realpath(_disk_path, disk_path) == NULL) {
         if (errno == ENOENT)
-            wprintw(log_window, "ERROR: file or directory %s doesn't exists\n", _disk_path);
+            printf("ERROR: file or directory %s doesn't exists\n", _disk_path);
         else if (errno == EACCES)
-            wprintw(log_window, "ERROR: access to file or directory %s is not allowed\n", _disk_path);
+            printf("ERROR: access to file or directory %s is not allowed\n", _disk_path);
         else
-            wprintw(log_window, "ERROR: can't open file or directory %s (errno %d)\n", _disk_path, errno);
+            printf("ERROR: can't open file or directory %s (errno %d)\n", _disk_path, errno);
         exit(EXIT_FAILURE);
     }
+
     DIR *dir;
     dir = opendir(disk_path);
     if (!dir) {
@@ -104,7 +79,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    initialize_buffers();
+    init_gui();
+    init_buffers();
     get_disk_info();
     
     print_header(0, 0);
@@ -113,15 +89,23 @@ int main(int argc, char *argv[]) {
     // TODO: VERIFICARE SE SU WIN FUNZIONA REALPATH (rimuove automaticamente final slash)
 
     while (1) {
-        OUTB(0xC0, addr + 2); // Reset PCR
-        set(CLOCK_LOW | DATA_LOW);   // Release clock and data line
-        device_resetted = _resetted_message_displayed = 0;
-        wait_atn(0);
-        
-        char _localtime[LOCALTIME_STRLEN];
-        get_localtime(_localtime);
-        wprintw(log_window, "[%s] DEVICE WAITING FOR ATN\n", _localtime);
+        OUTB(0xC0, addr + 2);   // Reset PCR
 
+        if (resetted()) {
+            if (!resetted_message_displayed) {
+                print_log("DEVICE HALTED\n", 1, 1);
+                resetted_message_displayed = 1;
+            }
+            continue;
+        }
+
+        print_log("DEVICE BOOTING...\n", 4, 1);
+        sleep(1);
+        print_log("DEVICE WAITING FOR ATN\n", 7, 1);
+
+        set(CLOCK_LOW | DATA_LOW);   // Release clock and data line
+        device_resetted = resetted_message_displayed = 0;
+        
         while (1) {
             if (atn(1))
                 handle_atn();
@@ -135,7 +119,7 @@ int main(int argc, char *argv[]) {
     }
 
     free_buffers();
-    endwin();
+    destroy_gui();
 
     // TODO: catch ctrl + c
     printf("BYE");

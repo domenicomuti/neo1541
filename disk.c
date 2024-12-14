@@ -11,7 +11,8 @@ extern WINDOW *log_window;
 unsigned short get_file_blocks(char *path, char *_filename, vic_size *filesize) {
     char *_path = calloc(strlen(path) + strlen(_filename) + 2, sizeof(char));
     if (_path == NULL) {
-        wprintw(log_window, "ERROR: Memory allocation error\n");
+        destroy_gui();
+        printf("ERROR: Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     strcpy(_path, path);
@@ -110,7 +111,8 @@ void get_disk_info() {
             if (f == NULL) {
                 f = malloc(sizeof *f);
                 if (f == NULL) {
-                    wprintw(log_window, "ERROR: Memory allocation error\n");
+                    destroy_gui();
+                    printf("ERROR: Memory allocation error\n");
                     exit(EXIT_FAILURE);
                 }
                 strcpy(f->filename, _filename);
@@ -285,7 +287,11 @@ void write_data_buffer() {
         _filename[filename.length] = '\0';
         char _localtime[30];
         get_localtime(_localtime);
-        wprintw(log_window, "[%s] SENDING FILE: %s -> %s\n", _localtime, disk_path, _filename);
+        wprintw(log_window, "[%s] ", _localtime);
+        wattron(log_window, COLOR_PAIR(4));
+        wprintw(log_window, "UPLOADING FILE: ");
+        wattroff(log_window, COLOR_PAIR(4));
+        wprintw(log_window, "%s -> %s\n", disk_path, _filename);
         wrefresh(log_window);
         extract_file_from_image();
         if (data_buffer.length == 0)
@@ -336,7 +342,11 @@ void write_data_buffer() {
             fread(data_buffer.string, data_buffer.length, 1, fptr);
             char _localtime[30];
             get_localtime(_localtime);
-            wprintw(log_window, "[%s] SENDING FILE: %s (%ld bytes)\n", _localtime, image_path, data_buffer.length);
+            wprintw(log_window, "[%s] ", _localtime);
+            wattron(log_window, COLOR_PAIR(4));
+            wprintw(log_window, "UPLOADING FILE ");
+            wattroff(log_window, COLOR_PAIR(4));
+            wprintw(log_window, "%s (%ld bytes)\n", image_path, data_buffer.length);
             wrefresh(log_window);
             fclose(fptr);
         }

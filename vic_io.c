@@ -11,13 +11,8 @@ extern LARGE_INTEGER lpFrequency;
 extern WINDOW *header_window;
 extern WINDOW *log_window;
 
-int _resetted_message_displayed = 0;
 int resetted() {
-    int _resetted = (INB(addr + 1) & 0x80) == 0x80;
-    if (_resetted && !_resetted_message_displayed) {
-        _resetted_message_displayed = 1;
-    }
-    return _resetted;
+    return (INB(addr + 1) & 0x80) == 0x80;
 }
 
 int atn(int value) {

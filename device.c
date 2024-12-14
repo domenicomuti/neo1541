@@ -26,10 +26,11 @@ int header_i = 0;
 extern LARGE_INTEGER lpFrequency;
 #endif
 
-void initialize_buffers() {
+void init_buffers() {
     vic_byte *_data_buffer = malloc(MAX_DATA_BUFFER_SIZE * sizeof(vic_byte));
     if (_data_buffer == NULL) {
-        wprintw(log_window, "ERROR: Memory allocation error\n");
+        destroy_gui();
+        printf("ERROR: Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     data_buffer.string = _data_buffer;
@@ -37,7 +38,8 @@ void initialize_buffers() {
 
     vic_byte *_filename = malloc(FILENAMEMAXSIZE * sizeof(vic_byte));
     if (_filename == NULL) {
-        wprintw(log_window, "ERROR: Memory allocation error\n");
+        destroy_gui();
+        printf("ERROR: Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     filename.string = _filename;
@@ -50,10 +52,6 @@ void free_buffers() {
 }
 
 void reset_device() {
-    #if DEBUG
-    wprintw(log_window, "%s\n", __func__);
-    #endif
-
     device_resetted = device_attentioned = device_listening = device_talking = 0;
 }
 
@@ -361,7 +359,12 @@ void handle_received_bytes() {
 
         char _localtime[LOCALTIME_STRLEN];
         get_localtime(_localtime);
-        wprintw(log_window, "[%s] %s: \"%s\"\n", _localtime, (channel <= 1 ? "FILENAME" : "COMMAND"), _filename_ascii);
+        
+        wprintw(log_window, "[%s] ", _localtime);
+        wattron(log_window, COLOR_PAIR(4));
+        wprintw(log_window, "%s ", channel <= 1 ? "FILENAME" : "COMMAND");
+        wattroff(log_window, COLOR_PAIR(4));
+        wprintw(log_window, "\"%s\"\n", _filename_ascii);
 
         if (channel == 15)
             handle_dos_command();
