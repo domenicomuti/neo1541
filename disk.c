@@ -12,7 +12,7 @@ unsigned short get_file_blocks(char *path, char *_filename, vic_size *filesize) 
     char *_path = calloc(strlen(path) + strlen(_filename) + 2, sizeof(char));
     if (_path == NULL) {
         destroy_gui();
-        printf("ERROR: Memory allocation error\n");
+        printf("ERROR Memory allocation error\n");
         exit(EXIT_FAILURE);
     }
     strcpy(_path, path);
@@ -112,7 +112,7 @@ void get_disk_info() {
                 f = malloc(sizeof *f);
                 if (f == NULL) {
                     destroy_gui();
-                    printf("ERROR: Memory allocation error\n");
+                    printf("ERROR Memory allocation error\n");
                     exit(EXIT_FAILURE);
                 }
                 strcpy(f->filename, _filename);
@@ -170,9 +170,9 @@ void save_file_to_image() {
 }
 
 void directory_listing() {
-#if DEBUG
-    wprintw(log_window, "%s\n", __func__);
-#endif
+    #if DEBUG
+    printf("\n%s\n", __func__);
+    #endif
     data_buffer.length = filename.length = 0;
 
     int i_memory = 0x1001;
@@ -252,9 +252,9 @@ void directory_listing() {
 }
 
 void write_data_buffer() {
-#if DEBUG
-    wprintw(log_window, "%s\n", __func__);
-#endif
+    #if DEBUG
+    printf("\n%s\n", __func__);
+    #endif
     data_buffer.length = 0;
 
     get_disk_info();
@@ -262,7 +262,8 @@ void write_data_buffer() {
     if (vic_string_equal_string(&filename, "$")) {
         char _localtime[30];
         get_localtime(_localtime);
-        wprintw(log_window, "[%s] LIST FILES: %s\n", _localtime, disk_path);
+        print_log("LIST FILES", 1, 4, 0);
+        print_log(" %s\n", 0, 0, 1, disk_path);
         directory_listing();
     }
     else if (vic_string_equal_string(&filename, "..")) {
@@ -272,7 +273,6 @@ void write_data_buffer() {
             t[0] = '\0';
         }
         else {
-            // TODO: WIN32 VERSION
             t[0] = FILESEPARATOR;
             t[1] = '\0';
         }
@@ -285,14 +285,8 @@ void write_data_buffer() {
         char _filename[NAME_MAX + 1];
         for (int i = 0; i < filename.length; i++) _filename[i] = p2a(filename.string[i]);
         _filename[filename.length] = '\0';
-        char _localtime[30];
-        get_localtime(_localtime);
-        wprintw(log_window, "[%s] ", _localtime);
-        wattron(log_window, COLOR_PAIR(4));
-        wprintw(log_window, "UPLOADING FILE: ");
-        wattroff(log_window, COLOR_PAIR(4));
-        wprintw(log_window, "%s -> %s\n", disk_path, _filename);
-        wrefresh(log_window);
+        print_log("UPLOADING FILE", 1, 4, 0);
+        print_log(" %s -> %s\n", 0, 0, 1, disk_path, _filename);
         extract_file_from_image();
         if (data_buffer.length == 0)
             return;
@@ -340,14 +334,8 @@ void write_data_buffer() {
                 return;
             data_buffer.length = dir_entry->filesize;
             fread(data_buffer.string, data_buffer.length, 1, fptr);
-            char _localtime[30];
-            get_localtime(_localtime);
-            wprintw(log_window, "[%s] ", _localtime);
-            wattron(log_window, COLOR_PAIR(4));
-            wprintw(log_window, "UPLOADING FILE ");
-            wattroff(log_window, COLOR_PAIR(4));
-            wprintw(log_window, "%s (%ld bytes)\n", image_path, data_buffer.length);
-            wrefresh(log_window);
+            print_log("UPLOADING FILE", 1, 4, 0);
+            print_log(" %s (%ld bytes)\n", 0, 0, 1, image_path, data_buffer.length);
             fclose(fptr);
         }
     }

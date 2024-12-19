@@ -13,7 +13,7 @@
 void init_gui();
 void destroy_gui();
 void print_header(int i, int direction);
-void print_log(char *format, int color, int refresh, ...);
+void print_log(char *format, int localtime, int color, int refresh, ...);
 void set_progress_bar(int percent);
 
 #endif

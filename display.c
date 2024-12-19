@@ -8,6 +8,7 @@ WINDOW *progress_bar_window;
 WINDOW *log_window;
 
 void init_gui() {
+    #if !DEBUG
     setlocale(LC_ALL, "");
     initscr();
     cbreak();
@@ -43,13 +44,16 @@ void init_gui() {
     init_pair(9, COLOR_WHITE, COLOR_GREEN);
 
     curs_set(0);
+    #endif
 }
 
 void destroy_gui() {
+    #if !DEBUG
     delwin(header_window);
     delwin(progress_bar_window);
     delwin(log_window);
     endwin();
+    #endif
 }
 
 void print_header(int i, int direction) {
@@ -62,19 +66,39 @@ void print_header(int i, int direction) {
     wattron(header_window, COLOR_PAIR(direction ? (((6 + i) % 7) + 1) : (((13 - i) % 7) + 1)));     wprintw(header_window,       "  ░▒███▒  ▒███▒░ ░▒██████████▒░  ░▒████████▒░     ░▒███▒░ ░▒█████████▒░         ░▒███▒░    ░▒███▒░\n");
 }
 
-void print_log(char *format, int color, int refresh, ...) {
-    char _localtime[LOCALTIME_STRLEN];
-    get_localtime(_localtime);
-    wprintw(log_window, "[%s] ", _localtime);
+void print_log(char *format, int localtime, int color, int refresh, ...) {
+    if (localtime) {
+        char _localtime[LOCALTIME_STRLEN];
+        get_localtime(_localtime);
+
+        #if !DEBUG
+        wprintw(log_window, "[%s] ", _localtime);
+        #else
+        printf("[%s] ", _localtime);
+        #endif
+    }    
 
     va_list va;
     va_start(va, refresh);
-    wattron(log_window, COLOR_PAIR(color));
+
+    #if !DEBUG
+    if (color != 0)
+        wattron(log_window, COLOR_PAIR(color));
+    #endif
+        
+    #if !DEBUG
     vw_printw(log_window, format, va);
-    wattroff(log_window, COLOR_PAIR(color));
+    #else
+    vprintf(format, va);
+    #endif
+
+    #if !DEBUG
+    if (color != 0)
+        wattroff(log_window, COLOR_PAIR(color));
 
     if (refresh)
         wrefresh(log_window);
+    #endif
 }
 
 void set_progress_bar(int percent) {

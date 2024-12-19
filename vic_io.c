@@ -25,7 +25,7 @@ int atn(int value) {
 
 void wait_atn(int value) {
     #if DEBUG
-    wprintw(log_window, "watn ");
+    printf("watn ");
     #endif
     
     if (value) 
@@ -40,7 +40,7 @@ void wait_atn(int value) {
 
 int wait_clock(int value, int timeout, int check_atn) {
     #if DEBUG
-    wprintw(log_window, "wc%d(%d) ", value, timeout);
+    printf("wc%d(%d) ", value, timeout);
     suseconds_t b = get_microsec();
     #endif
 
@@ -52,13 +52,13 @@ int wait_clock(int value, int timeout, int check_atn) {
     while ((in & 0x20) == value) {
         if (check_atn && ((in & 0x10) == 0x10)) {   // if check for atn low and atn is low
             #if DEBUG
-            wprintw(log_window, "EXIT ATN ");
+            printf("EXIT ATN ");
             #endif
             return 1;
         }
         if (!check_atn && ((in & 0x10) == 0)) {
             #if DEBUG
-            wprintw(log_window, "ENTER ATN ");
+            printf("ENTER ATN ");
             #endif
             return 1;
         }
@@ -66,7 +66,7 @@ int wait_clock(int value, int timeout, int check_atn) {
             #if DEBUG
             char _localtime[LOCALTIME_STRLEN];
             get_localtime(_localtime);
-            wprintw(log_window, "[%s] TIMEOUT(%ld) %s ", _localtime, (get_microsec() - a), __func__);
+            printf("[%s] TIMEOUT(%ld) %s ", _localtime, (get_microsec() - a), __func__);
             #endif
             return 1;
         }
@@ -78,7 +78,7 @@ int wait_clock(int value, int timeout, int check_atn) {
     }
 
     #if DEBUG
-    wprintw(log_window, "%ld ", get_microsec() - b);
+    printf("%ld ", get_microsec() - b);
     #endif
 
     return 0;
@@ -86,7 +86,7 @@ int wait_clock(int value, int timeout, int check_atn) {
 
 int wait_data(int value, int timeout) {
     #if DEBUG
-    wprintw(log_window, "wd%d(%d) ", value, timeout);
+    printf("wd%d(%d) ", value, timeout);
     suseconds_t b = get_microsec();
     #endif
 
@@ -100,7 +100,7 @@ int wait_data(int value, int timeout) {
             #if DEBUG
             char _localtime[LOCALTIME_STRLEN];
             get_localtime(_localtime);
-            wprintw(log_window, "[%s] TIMEOUT(%ld) %s ", _localtime, (get_microsec() - a), __func__);
+            printf("[%s] TIMEOUT(%ld) %s ", _localtime, (get_microsec() - a), __func__);
             #endif
             return 1;
         }       
@@ -120,7 +120,7 @@ int wait_data(int value, int timeout) {
     #endif
 
     #if DEBUG
-    wprintw(log_window, "%ld ", get_microsec() - b);
+    printf("%ld ", get_microsec() - b);
     #endif
 
     return 0;
@@ -132,25 +132,25 @@ void set(vic_byte value) {
     if ((value & CLOCK_HIGH) == CLOCK_HIGH) {
         out_value |= 2;    // set Clock to 1 (Commodore True)
         #if DEBUG
-        wprintw(log_window, "sc1 ");
+        printf("sc1 ");
         #endif
     }
     if ((value & CLOCK_LOW) == CLOCK_LOW) {
         out_value &= ~2;   // set Clock to 0 (Commodore False)
         #if DEBUG
-        wprintw(log_window, "sc0 ");
+        printf("sc0 ");
         #endif
     }
     if ((value & DATA_HIGH) == DATA_HIGH) {
         out_value &= ~4;   // set Data to 0 (Commodore True)
         #if DEBUG
-        wprintw(log_window, "sd1 ");
+        printf("sd1 ");
         #endif
     }
     if ((value & DATA_LOW) == DATA_LOW) {
         out_value |= 4;    // set Data to 1 (Commodore False)
         #if DEBUG
-        wprintw(log_window, "sd0 ");
+        printf("sd0 ");
         #endif
     }
     OUTB(out_value, addr + 2);
@@ -158,7 +158,7 @@ void set(vic_byte value) {
 
 int eoi() {
     #if DEBUG
-    wprintw(log_window, "eoi? ");
+    printf("eoi? ");
     #endif
 
     #ifdef __linux__
@@ -169,7 +169,7 @@ int eoi() {
         elapsed = get_microsec() - a;
         if (elapsed > 255) {
             #if DEBUG
-            wprintw(log_window, "eoi ");
+            printf("eoi ");
             #endif
             eoi = 1;
             break;
@@ -186,7 +186,7 @@ int eoi() {
         ElapsedMicroseconds.QuadPart /= lpFrequency.QuadPart;
 
         if (ElapsedMicroseconds.QuadPart > 200) {
-            //wprintw(log_window, "EOI\n");
+            //print_log("EOI\n", 0, 0, 1);
             eoi = 1;
             break;
         }
@@ -198,7 +198,7 @@ int eoi() {
 
 vic_byte get_byte(int check_atn) {
     #if DEBUG
-    wprintw(log_window, "gb ");
+    print_log("gb ", 0, 0, 1);
     #endif
     
     vic_byte byte = 0;

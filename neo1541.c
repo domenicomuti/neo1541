@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
     #ifdef __linux__
     if (ioperm(addr, 3, 1) == -1) {
         if (errno == EPERM) {
-            printf("ERROR: You must be root\n");
+            printf("ERROR You must be root\n");
             exit(EXIT_FAILURE);
         }
     }
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--disk") == 0) {
             if (argc < i + 2) {
-                printf("ERROR: Error parsing argument for --disk\n");
+                printf("ERROR Error parsing argument for --disk\n");
                 exit(EXIT_FAILURE);
             }
             _disk_path = argv[i + 1];
@@ -59,11 +59,11 @@ int main(int argc, char *argv[]) {
     trim(_disk_path);
     if (realpath(_disk_path, disk_path) == NULL) {
         if (errno == ENOENT)
-            printf("ERROR: file or directory %s doesn't exists\n", _disk_path);
+            printf("ERROR file or directory %s doesn't exists\n", _disk_path);
         else if (errno == EACCES)
-            printf("ERROR: access to file or directory %s is not allowed\n", _disk_path);
+            printf("ERROR access to file or directory %s is not allowed\n", _disk_path);
         else
-            printf("ERROR: can't open file or directory %s (errno %d)\n", _disk_path, errno);
+            printf("ERROR can't open file or directory %s (errno %d)\n", _disk_path, errno);
         exit(EXIT_FAILURE);
     }
 
@@ -93,15 +93,15 @@ int main(int argc, char *argv[]) {
 
         if (resetted()) {
             if (!resetted_message_displayed) {
-                print_log("DEVICE HALTED\n", 1, 1);
+                print_log("DEVICE HALTED\n", 1, 1, 1);
                 resetted_message_displayed = 1;
             }
             continue;
         }
 
-        print_log("DEVICE BOOTING...\n", 4, 1);
+        print_log("DEVICE BOOTING...\n", 1, 4, 1);
         sleep(1);
-        print_log("DEVICE WAITING FOR ATN\n", 7, 1);
+        print_log("DEVICE WAITING FOR ATN\n", 1, 4, 1);
 
         set(CLOCK_LOW | DATA_LOW);   // Release clock and data line
         device_resetted = resetted_message_displayed = 0;
@@ -114,7 +114,6 @@ int main(int argc, char *argv[]) {
                 reset_device();
                 break;
             }
-            wrefresh(log_window);
         }
     }
 
