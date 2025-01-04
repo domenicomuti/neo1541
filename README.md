@@ -1,5 +1,6 @@
 ## NEO1541
 **Commodore 1541 emulator for Linux**
+![neo1541](https://github.com/user-attachments/assets/e90d0642-ca69-4f0b-a322-80e541a55f26)
 NEO1541 is a software emulator of the Commodore 1541 IEC protocol.
 
 Currently you can load/save prg files directly from your hard disk,
