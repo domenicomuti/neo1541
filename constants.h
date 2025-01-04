@@ -1,5 +1,7 @@
 #include <limits.h>
 
+#define NEO1541_VERSION           "0.1"
+
 #define DEBUG                     0
 
 #ifdef _WIN32

@@ -36,6 +36,16 @@ int main(int argc, char *argv[]) {
     vic20_mode = 0;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--help") == 0) {
+            printf("NEO1541 - Commodore 1541 software emulator (version " NEO1541_VERSION " built on " __DATE__ ")\n\n");
+            printf("Usage: neo1541 [options]\n\n");
+            printf("Options:\n");
+            printf("  --port <port>\n");
+            printf("  --disk <path>\n");
+            printf("  --vic20\n");
+            return 0;
+        }
+
         if (strcmp(argv[i], "--port") == 0) {
             if (argc < i + 2) {
                 printf("ERROR Error parsing argument for --port\n");
