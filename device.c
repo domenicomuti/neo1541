@@ -1,6 +1,7 @@
 #include "device.h"
 
-extern int addr;
+extern int port;
+extern int vic20_mode;
 
 vic_byte command;
 vic_byte channel;
@@ -178,7 +179,6 @@ void download_bytes() {
         }
 
         wait_clock(1, 0, 0);
-        // TODO: indietreggia length quando get_byte va in errore
         data_buffer.string[data_buffer.length++] = get_byte(0);
 
         microsleep(100);
@@ -216,6 +216,8 @@ void upload_bytes() {
 
     int i_file = 0;
     int error = 0;
+
+    int data_valid_window = vic20_mode ? 20 : 60;
 
     microsleep(80);
 
@@ -275,11 +277,11 @@ void upload_bytes() {
             set(CLOCK_HIGH);
             a = get_microsec();
             set(((~c >> i) & 1) ? DATA_HIGH : DATA_LOW);
-            while ((get_microsec() - a) < 70) {}   // Bit setup
+            while ((get_microsec() - a) < 70) {}                  // Bit setup
 
             set(CLOCK_LOW);
             a = get_microsec();
-            while ((get_microsec() - a) < 20) {}   // Data valid (20us for the VIC20, 60us for the Commodore 64)
+            while ((get_microsec() - a) < data_valid_window) {}   // Data valid
             set(DATA_LOW);
         }
         #elif _WIN64
@@ -385,8 +387,20 @@ void handle_received_bytes() {
         else if (channel >= 2 && channel <= 14) {
             // TODO
         }
-        else if (channel == 15)
+        else if (channel == 15) {
+            for (int i = 0; i < data_buffer.length; i++) {
+                filename.string[i] = data_buffer.string[i];
+                _filename_ascii[i] = data_buffer.string[i];
+            }
+            filename.length = data_buffer.length;
+            _filename_ascii[filename.length] = '\0';
+            data_buffer.length = 0;
+
+            print_log("DOS COMMAND", 1, 4, 0);
+            print_log(" \"%s\"\n", 0, 0, 1, _filename_ascii);
+
             handle_dos_command();
+        }
     }
 }
 

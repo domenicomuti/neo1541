@@ -11,14 +11,15 @@
 #include "device.h"
 #include "string_functions.h"
 
+int port;
+int vic20_mode;
+
 extern int device_resetted;
 extern int device_attentioned;
 extern int device_listening;
 extern int device_talking;
 
 int resetted_message_displayed = 0;
-
-extern int addr;
 
 extern char disk_path[PATH_MAX];
 
@@ -30,9 +31,34 @@ extern WINDOW *header_window;
 extern WINDOW *log_window;
 
 int main(int argc, char *argv[]) {
+    char *_disk_path = "./";
+    port = 0x378;   // LPT1 default portess
+    vic20_mode = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--port") == 0) {
+            if (argc < i + 2) {
+                printf("ERROR Error parsing argument for --port\n");
+                exit(EXIT_FAILURE);
+            }
+            port = strtol(argv[i + 1], NULL, 16);
+        }
+
+        if (strcmp(argv[i], "--disk") == 0) {
+            if (argc < i + 2) {
+                printf("ERROR Error parsing argument for --disk\n");
+                exit(EXIT_FAILURE);
+            }
+            _disk_path = argv[i + 1];
+        }
+
+        if (strcmp(argv[i], "--vic20") == 0) {
+            vic20_mode = 1;
+        }
+    }
 
     #ifdef __linux__
-    if (ioperm(addr, 3, 1) == -1) {
+    if (ioperm(port, 3, 1) == -1) {
         if (errno == EPERM) {
             printf("ERROR You must be root\n");
             exit(EXIT_FAILURE);
@@ -43,18 +69,6 @@ int main(int argc, char *argv[]) {
     // TODO: CHECK ADMINISTRATOR MODE ?
     QueryPerformanceFrequency(&lpFrequency);
     #endif
-
-    char *_disk_path;
-
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--disk") == 0) {
-            if (argc < i + 2) {
-                printf("ERROR Error parsing argument for --disk\n");
-                exit(EXIT_FAILURE);
-            }
-            _disk_path = argv[i + 1];
-        }
-    }
 
     trim(_disk_path);
     if (realpath(_disk_path, disk_path) == NULL) {
@@ -88,8 +102,12 @@ int main(int argc, char *argv[]) {
 
     // TODO: VERIFICARE SE SU WIN FUNZIONA REALPATH (rimuove automaticamente final slash)
 
+    print_log("PARALLEL PORT 0x%X\n", 1, 0, 1, port);
+    print_log("DISK PATH %s\n", 1, 0, 1, disk_path);
+    print_log("%s MODE\n", 1, 0, 1, vic20_mode ? "VIC20" : "COMMODORE 64");
+
     while (1) {
-        OUTB(0xC0, addr + 2);   // Reset PCR
+        OUTB(0xC0, port + 2);   // Reset PCR
 
         if (resetted()) {
             if (!resetted_message_displayed) {

@@ -1,8 +1,7 @@
 #include "vic_io.h"
 
 extern int device_resetted;
-
-int addr = 0xd100;
+extern int port;
 
 #ifdef _WIN32
 extern LARGE_INTEGER lpFrequency;
@@ -12,7 +11,7 @@ extern WINDOW *header_window;
 extern WINDOW *log_window;
 
 int resetted() {
-    return (INB(addr + 1) & 0x80) == 0x80;
+    return (INB(port + 1) & 0x80) == 0x80;
 }
 
 int atn(int value) {
@@ -20,7 +19,7 @@ int atn(int value) {
         device_resetted = 1;
         return 0;
     }
-    return (INB(addr + 1) & 0x10) == !value;
+    return (INB(port + 1) & 0x10) == !value;
 }
 
 void wait_atn(int value) {
@@ -30,7 +29,7 @@ void wait_atn(int value) {
     
     if (value) 
         value = 0x10;
-    while ((INB(addr + 1) & 0x10) == value) {
+    while ((INB(port + 1) & 0x10) == value) {
         if (resetted()) {
             device_resetted = 1;
             break;
@@ -47,7 +46,7 @@ int wait_clock(int value, int timeout, int check_atn) {
     if (value) 
         value = 0x20;
     suseconds_t a = get_microsec();
-    vic_byte in = INB(addr + 1);
+    vic_byte in = INB(port + 1);
 
     while ((in & 0x20) == value) {
         if (check_atn && ((in & 0x10) == 0x10)) {   // if check for atn low and atn is low
@@ -74,7 +73,7 @@ int wait_clock(int value, int timeout, int check_atn) {
             device_resetted = 1;
             return 1;
         }
-        in = INB(addr + 1);
+        in = INB(port + 1);
     }
 
     #if DEBUG
@@ -95,7 +94,7 @@ int wait_data(int value, int timeout) {
 
     #ifdef __linux__
     suseconds_t a = get_microsec();
-    while ((INB(addr + 1) & 0x40) == value) {
+    while ((INB(port + 1) & 0x40) == value) {
         if ((timeout > 0) && ((get_microsec() - a) > timeout)) {
             #if DEBUG
             char _localtime[LOCALTIME_STRLEN];
@@ -108,7 +107,7 @@ int wait_data(int value, int timeout) {
     #elif _WIN32
     LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
     QueryPerformanceCounter(&StartingTime);
-    while ((INB(addr + 1) & 0x40) == value) {
+    while ((INB(port + 1) & 0x40) == value) {
         QueryPerformanceCounter(&EndingTime);
         ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
         ElapsedMicroseconds.QuadPart *= 1000000;
@@ -127,7 +126,7 @@ int wait_data(int value, int timeout) {
 }
 
 void set(vic_byte value) {
-    vic_byte in_value = INB(addr + 2);
+    vic_byte in_value = INB(port + 2);
     vic_byte out_value = in_value;
     if ((value & CLOCK_HIGH) == CLOCK_HIGH) {
         out_value |= 2;    // set Clock to 1 (Commodore True)
@@ -153,7 +152,7 @@ void set(vic_byte value) {
         printf("sd0 ");
         #endif
     }
-    OUTB(out_value, addr + 2);
+    OUTB(out_value, port + 2);
 }
 
 int eoi() {
@@ -165,7 +164,7 @@ int eoi() {
     suseconds_t a = get_microsec();
     suseconds_t elapsed;
     int eoi = 0;
-    while (INB(addr + 1) & 0x20) {
+    while (INB(port + 1) & 0x20) {
         elapsed = get_microsec() - a;
         if (elapsed > 255) {
             #if DEBUG
@@ -179,7 +178,7 @@ int eoi() {
     LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
     QueryPerformanceCounter(&StartingTime);
     int eoi = 0;
-    while (INB(addr + 1) & 0x20) {
+    while (INB(port + 1) & 0x20) {
         QueryPerformanceCounter(&EndingTime);
         ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
         ElapsedMicroseconds.QuadPart *= 1000000;
@@ -204,44 +203,44 @@ vic_byte get_byte(int check_atn) {
     vic_byte byte = 0;
 
     // bit 1
-    if (wait_clock(0, 200, check_atn)) goto end;   // 70 timeout
-    byte = (INB(addr + 1) & 0x40) >> 6;
-    if (wait_clock(1, 200, check_atn)) goto end;   // 20 timeout
+    if (wait_clock(0, 200, check_atn)) goto end;   // ~70 ms
+    byte = (INB(port + 1) & 0x40) >> 6;
+    if (wait_clock(1, 200, check_atn)) goto end;   // ~20 ms
 
     // bit 2
-    if (wait_clock(0, 200, check_atn)) goto end;   // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 5;
-    if (wait_clock(1, 200, check_atn)) goto end;   // 20 timeout
+    if (wait_clock(0, 200, check_atn)) goto end;   // ~70 ms
+    byte |= (INB(port + 1) & 0x40) >> 5;
+    if (wait_clock(1, 200, check_atn)) goto end;   // ~20 ms
 
     // bit 3
-    if (wait_clock(0, 200, check_atn)) goto end;   // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 4;
-    if (wait_clock(1, 200, check_atn)) goto end;   // 20 timeout
+    if (wait_clock(0, 200, check_atn)) goto end;   // ~70 ms
+    byte |= (INB(port + 1) & 0x40) >> 4;
+    if (wait_clock(1, 200, check_atn)) goto end;   // ~20 ms
 
     // bit 4
-    if (wait_clock(0, 200, check_atn)) goto end;   // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 3;
-    if (wait_clock(1, 200, check_atn)) goto end;   // 20 timeout
+    if (wait_clock(0, 200, check_atn)) goto end;   // ~70 ms
+    byte |= (INB(port + 1) & 0x40) >> 3;
+    if (wait_clock(1, 200, check_atn)) goto end;   // ~20 ms
 
     // bit 5
-    if (wait_clock(0, 200, check_atn)) goto end;   // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 2;
-    if (wait_clock(1, 200, check_atn)) goto end;   // 20 timeout
+    if (wait_clock(0, 200, check_atn)) goto end;   // ~70 ms
+    byte |= (INB(port + 1) & 0x40) >> 2;
+    if (wait_clock(1, 200, check_atn)) goto end;   // ~20 ms
     
     // bit 6
-    if (wait_clock(0, 200, check_atn)) goto end;   // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) >> 1;
-    if (wait_clock(1, 200, check_atn)) goto end;   // 20 timeout
+    if (wait_clock(0, 200, check_atn)) goto end;   // ~70 ms
+    byte |= (INB(port + 1) & 0x40) >> 1;
+    if (wait_clock(1, 200, check_atn)) goto end;   // ~20 ms
 
     // bit 7
-    if (wait_clock(0, 200, check_atn)) goto end;   // 70 timeout
-    byte |= (INB(addr + 1) & 0x40);
-    if (wait_clock(1, 200, check_atn)) goto end;   // 20 timeout
+    if (wait_clock(0, 200, check_atn)) goto end;   // ~70 ms
+    byte |= (INB(port + 1) & 0x40);
+    if (wait_clock(1, 200, check_atn)) goto end;   // ~20 ms
 
     // bit 8
-    if (wait_clock(0, 200, check_atn)) goto end;   // 70 timeout
-    byte |= (INB(addr + 1) & 0x40) << 1;
-    if (wait_clock(1, 200, check_atn)) goto end;   // 20 timeout
+    if (wait_clock(0, 200, check_atn)) goto end;   // ~70 ms
+    byte |= (INB(port + 1) & 0x40) << 1;
+    if (wait_clock(1, 200, check_atn)) goto end;   // ~20 ms
 
     set(DATA_HIGH);
 

@@ -23,7 +23,7 @@ unsigned short get_file_blocks(char *path, char *_filename, vic_size *filesize) 
     }
     strcpy(_path + strlen(path) + offset, _filename);
 
-#ifdef __linux__
+    #ifdef __linux__
     unsigned long long blocks;
     FILE* fptr = fopen(_path, "rb");
     if (fptr == NULL) {
@@ -37,7 +37,7 @@ unsigned short get_file_blocks(char *path, char *_filename, vic_size *filesize) 
         blocks = ceil(*filesize / 256.0);
         fclose(fptr);
     }
-#elif _WIN64
+    #elif _WIN64
     unsigned long long blocks;
     int fh = _open(_path, _O_BINARY | _O_RDONLY);
     if (fh == -1) {
@@ -48,9 +48,9 @@ unsigned short get_file_blocks(char *path, char *_filename, vic_size *filesize) 
         blocks = ceil(_telli64(fh) / 256.0);
         _close(fh);
     }
-#elif _WIN32
+    #elif _WIN32
     // TODO
-#endif
+    #endif
 
     free(_path);
     if (blocks > 999) blocks = 999;
@@ -153,7 +153,7 @@ void get_disk_info() {
         substr(ext, disk_path, -3, 3);
         strtolower(ext, 0);
 
-        if (strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) { // TODO: test d71 and d81 images
+        if (strcmp(ext, "d64") == 0 || strcmp(ext, "d71") == 0 || strcmp(ext, "d81") == 0) {   // TODO: test d71 and d81 images
             disk_info.type = DISK_IMAGE;
             cc1541(CC1541_PRINT_DIRECTORY);
         }
@@ -259,9 +259,24 @@ void write_data_buffer() {
 
     get_disk_info();
 
-    if (vic_string_equal_string(&filename, "$")) {
-        char _localtime[30];
-        get_localtime(_localtime);
+    if (vic_string_equal_string(&filename, "*")) {
+        if (disk_info.n_dir == 0) {
+            return;
+        }
+        else {
+            char test[3] = {0};
+            int i;
+            for (i = 0; i < disk_info.n_dir; i++) {
+                memcpy(test, disk_info.dir[i].filename_local, 2);
+                if (strcmp(test, "..") != 0)
+                    break;
+            }
+            filename.length = disk_info.dir[i].filename_length;
+            memcpy(filename.string, disk_info.dir[i].filename + 1, filename.length);
+            write_data_buffer();
+        }
+    }
+    else if (vic_string_equal_string(&filename, "$")) {
         print_log("LIST FILES", 1, 4, 0);
         print_log(" %s\n", 0, 0, 1, disk_path);
         directory_listing();

@@ -29,4 +29,3 @@ void microsleep(int duration) {
     while ((get_microsec() - a) < duration) {}
 #endif
 }
-

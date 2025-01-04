@@ -4756,7 +4756,7 @@ cc1541(int mode)
     int nooverwrite = 0;
     int dovalidate = 0;
     int restore_level = -1;
-    int ignore_collision = 0;
+    int ignore_collision = 1;
     int filetype = 0x82; /* default is closed PRG */
     //bool filetype_set = false;
     bool print_art_commandline = false;

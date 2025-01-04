@@ -2,11 +2,16 @@
 #define VIC_IO_H
 
 #ifdef __linux__
+
 #include <sys/io.h>
+#define INB(port) inb(port)
+#define OUTB(value, port) outb(value, port)
 
 #elif _WIN32
+
 #define INB(port) wprintw(log_window, "INB(%d)", port)
 #define OUTB(value, port) wprintw(log_window, "OUTB(%d, %d)", value, port)
+
 #endif
 
 #include <stdio.h>
@@ -15,9 +20,6 @@
 #include "timing.h"
 #include "display.h"
 #include "string_functions.h"
-
-#define INB(port) inb(port)
-#define OUTB(value, port) outb(value, port)
 
 #define CLOCK_HIGH 0x01
 #define CLOCK_LOW  0x02
